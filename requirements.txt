@@ -1,0 +1,14 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+prisma==0.15.0
+python-dotenv==1.0.0
+# Older Pydantic releases pull a pydantic-core build that fails on Python 3.14.
+# Keep these on a modern v2 line so fresh installs work on current interpreters.
+pydantic>=2.11,<3
+pydantic-settings>=2.10,<3
+email-validator>=2.1.0
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.2
+
+# JWT Authentication
+python-jose[cryptography]==3.3.0

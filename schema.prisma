@@ -1,0 +1,213 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+//  Enums
+// ─────────────────────────────────────────────
+
+enum Role {
+  PATIENT
+  CLINICIAN
+  ADMIN
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TrendStatus {
+  IMPROVING
+  STABLE
+  WORSENING
+}
+
+enum AlertPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum Severity {
+  MILD
+  MODERATE
+  SEVERE
+  CRITICAL
+}
+
+enum Frequency {
+  FIRST_TIME
+  RECURRING
+  CHRONIC
+}
+
+enum CareContext {
+  ASTHMA_FOLLOWUP
+  POST_SURGERY_RECOVERY
+  CHRONIC_DISEASE_MONITORING
+  INFECTION_FOLLOWUP
+  GENERAL_REVIEW
+}
+
+// ─────────────────────────────────────────────
+//  Core Identity
+// ─────────────────────────────────────────────
+
+model User {
+  id        Int      @id @default(autoincrement())
+  fullName  String?
+  email     String   @unique
+  password  String
+  phone     String?
+  role      Role     @default(PATIENT)
+  createdAt DateTime @default(now())
+
+  patient   Patient?
+  clinician Clinician?
+}
+
+// ─────────────────────────────────────────────
+//  Patient
+// ─────────────────────────────────────────────
+
+model Patient {
+  id               Int       @id @default(autoincrement())
+  userId           Int       @unique
+  emergencyContact String
+  dateOfBirth      DateTime
+  gender           String
+  updatedAt        DateTime  @updatedAt
+
+  // Clinical context — drives the intelligence layer
+  chronicConditions String?  // JSON array: ["asthma", "diabetes"]
+  allergies         String?  // JSON array: ["penicillin", "latex"]
+  baselineStatus    String?  // "stable" | "fragile" | "unknown"
+
+  // Intelligence Layer — updated on each new symptom report
+  currentRiskLevel   RiskLevel   @default(LOW)
+  currentTrendStatus TrendStatus @default(STABLE)
+  lastRiskUpdate     DateTime?
+  lastTrendUpdate    DateTime?
+  lastReportTime     DateTime?   // Denormalized for fast dashboard sorting
+
+  user           User            @relation(fields: [userId], references: [id])
+  assignments    Assignment[]
+  symptomReports SymptomReport[]
+  alerts         Alert[]
+}
+
+// ─────────────────────────────────────────────
+//  Clinician
+// ─────────────────────────────────────────────
+
+model Clinician {
+  id             Int    @id @default(autoincrement())
+  userId         Int    @unique
+  fullName       String // Fixed: was `fullname`
+  specialization String
+
+  user        User         @relation(fields: [userId], references: [id])
+  assignments Assignment[]
+}
+
+// ─────────────────────────────────────────────
+//  Assignment — carries care context
+// ─────────────────────────────────────────────
+
+model Assignment {
+  id          Int              @id @default(autoincrement())
+  clinicianId Int
+  patientId   Int
+  assignedAt  DateTime         @default(now())
+  status      AssignmentStatus @default(ACTIVE)
+  endedAt     DateTime?        // Set when status transitions to INACTIVE
+
+  // Care context — the reason this clinician monitors this patient
+  careContext CareContext @default(GENERAL_REVIEW)
+  reason      String?    // Free-text e.g. "Post-discharge hypertension monitoring"
+
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  clinician Clinician @relation(fields: [clinicianId], references: [id])
+
+  // No DB-level unique constraint — a patient can have multiple assignments
+  // over time (re-admission, different care contexts).
+  // Active-only uniqueness is enforced at the service layer.
+  @@index([patientId, clinicianId])
+}
+
+// ─────────────────────────────────────────────
+//  Symptom Report — structured clinical inputs
+// ─────────────────────────────────────────────
+
+model SymptomReport {
+  id        Int      @id @default(autoincrement())
+  patientId Int
+  notes     String?  // Optional free-text context — NOT used for scoring
+  createdAt DateTime @default(now())
+
+  // ── Structured inputs (primary data for intelligence layer) ──
+  symptoms           String    @default("[]") // JSON array of symptom IDs
+  severity           Severity  @default(MILD)
+  durationDays       Int       @default(1)
+  frequency          Frequency @default(FIRST_TIME)
+  temperature        Float?    // °C — optional vital
+  heartRate          Int?      // bpm — optional vital
+  medicationAdherent Boolean?  // Is patient taking prescribed meds?
+
+  // ── Intelligence Layer outputs ──
+  riskLevel       RiskLevel @default(LOW)
+  riskScore       Float     @default(0.0)
+  riskFactors     String?   // JSON blob of scoring components
+  riskExplanation String?   // Human-readable: "Severe | chest pain | 7 days | asthma context"
+
+  patient Patient  @relation(fields: [patientId], references: [id])
+  alerts  Alert[]
+}
+
+// ─────────────────────────────────────────────
+//  Alert
+// ─────────────────────────────────────────────
+
+model Alert {
+  id              Int           @id @default(autoincrement())
+  patientId       Int
+  symptomReportId Int
+  priority        AlertPriority
+  alertType       String        // "HIGH_RISK" | "WORSENING_TREND"
+  message         String        // Includes riskExplanation when available
+  isRead          Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  symptomReport SymptomReport @relation(fields: [symptomReportId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+//  Performance Metric
+// ─────────────────────────────────────────────
+
+model PerformanceMetric {
+  id             Int      @id @default(autoincrement())
+  endpoint       String
+  method         String
+  responseTimeMs Int
+  statusCode     Int
+  errorType      String?
+  errorMessage   String?
+  timestamp      DateTime @default(now())
+  userId         Int?
+}
