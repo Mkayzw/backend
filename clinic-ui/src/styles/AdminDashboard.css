@@ -1,0 +1,255 @@
+/* Admin Dashboard Specific Styles */
+
+.admin-dashboard-content {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 2rem;
+  align-items: start;
+}
+
+.admin-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-section {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.admin-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Users Table */
+.users-table-container {
+  overflow-x: auto;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.users-table thead {
+  background-color: #f8fafc;
+}
+
+.users-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.users-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.users-table tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+.role-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.status-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-active {
+  background-color: #10b98115;
+  color: #10b981;
+}
+
+.status-inactive {
+  background-color: #64748b15;
+  color: #64748b;
+}
+
+/* Activity Logs */
+.activity-logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.activity-log-item {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.activity-log-item:hover {
+  background-color: #f1f5f9;
+}
+
+.log-item-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.log-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-item-message {
+  font-size: 0.875rem;
+  color: #1e293b;
+  margin-bottom: 0.25rem;
+  line-height: 1.4;
+}
+
+.log-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.log-item-user {
+  font-weight: 500;
+}
+
+.log-item-time {
+  flex-shrink: 0;
+  margin-left: 1rem;
+}
+
+/* System Health Cards */
+.system-health-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.health-card {
+  padding: 1rem;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.health-card-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.health-card-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.health-good {
+  color: #10b981;
+}
+
+.health-bad {
+  color: #ef4444;
+}
+
+/* Quick Actions */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.quick-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.quick-action-btn:hover {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+.quick-action-btn:active {
+  transform: translateY(0);
+}
+
+.quick-action-icon {
+  font-size: 1.5rem;
+}
+
+/* Responsive Design */
+@media (max-width: 1280px) {
+  .admin-dashboard-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .admin-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .admin-sidebar .admin-section {
+    flex: 1;
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-section {
+    padding: 1rem;
+  }
+  
+  .admin-sidebar {
+    flex-direction: column;
+  }
+  
+  .system-health-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .users-table {
+    font-size: 0.8125rem;
+  }
+  
+  .users-table th,
+  .users-table td {
+    padding: 0.5rem 0.75rem;
+  }
+}
