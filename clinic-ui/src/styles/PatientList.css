@@ -1,0 +1,217 @@
+/* PatientList Component Styles */
+
+.patient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* Patient Card */
+.patient-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.patient-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
+}
+
+.patient-card-selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+
+.patient-card-selected:hover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+/* Patient Card Header */
+.patient-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.patient-card-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.patient-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Risk Level Badge */
+.patient-card-risk-badge {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+/* Trend Indicator */
+.patient-card-trend-indicator {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+/* Patient Card Info Section */
+.patient-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.patient-card-info-item {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.patient-card-info-label {
+  color: #64748b;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.patient-card-info-value {
+  color: #1e293b;
+  font-weight: 400;
+  flex: 1;
+}
+
+/* Empty State */
+.patient-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+}
+
+.patient-list-empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.patient-list-empty-text {
+  font-size: 15px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Scrollbar Styling */
+.patient-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.patient-list::-webkit-scrollbar-track {
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
+.patient-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.patient-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .patient-list {
+    max-height: 500px;
+  }
+  
+  .patient-card {
+    padding: 14px;
+  }
+  
+  .patient-card-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .patient-card-badges {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .patient-card-name {
+    font-size: 15px;
+  }
+  
+  .patient-card-info-item {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .patient-list {
+    max-height: 400px;
+    gap: 10px;
+  }
+  
+  .patient-card {
+    padding: 12px;
+  }
+  
+  .patient-card-name {
+    font-size: 14px;
+  }
+  
+  .patient-card-risk-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  
+  .patient-card-trend-indicator {
+    font-size: 20px;
+    width: 24px;
+    height: 24px;
+  }
+  
+  .patient-card-info-item {
+    font-size: 11px;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
