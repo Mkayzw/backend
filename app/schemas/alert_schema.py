@@ -1,7 +1,6 @@
 """
 Alert Schemas
 
-Requirements: 13.7
 """
 from pydantic import BaseModel
 from datetime import datetime

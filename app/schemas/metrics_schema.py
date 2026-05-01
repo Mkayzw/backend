@@ -1,7 +1,6 @@
 """
 Metrics Schemas
 
-Requirements: 17.3, 17.4
 """
 from pydantic import BaseModel
 from typing import Dict, Any

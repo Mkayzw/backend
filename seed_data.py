@@ -2,6 +2,7 @@
 Comprehensive Seed Data Script — Clinical Decision-Support Prototype
 
 Generates realistic test data that exercises the actual intelligence layer:
+- Deterministic test accounts with predictable credentials for RBAC testing
 - Patients with chronic conditions and allergies
 - Assignments with clinical care contexts matched to patient conditions
 - Symptom reports with structured inputs processed through the real risk engine
@@ -9,6 +10,17 @@ Generates realistic test data that exercises the actual intelligence layer:
 
 This produces believable, consistent data that demonstrates the system
 doing something intelligent — not random outputs.
+
+Test Accounts (deterministic, seeded FIRST for predictable IDs):
+  admin@telemed.local           / Admin123!      (ADMIN)
+  clinician.cardiology@telemed.local  / Clinician123!  (CLINICIAN - Cardiology)
+  clinician.pulmonology@telemed.local / Clinician123!  (CLINICIAN - Pulmonology)
+  clinician.unassigned@telemed.local  / Clinician123!  (CLINICIAN - no patients)
+  patient.asthma@telemed.local        / Patient123!    (PATIENT - fragile/asthma)
+  patient.hypertension@telemed.local  / Patient123!    (PATIENT - stable/hypertension)
+  patient.diabetes@telemed.local      / Patient123!    (PATIENT - stable/diabetes)
+  patient.postop@telemed.local        / Patient123!    (PATIENT - stable/post-surgery)
+  patient.unassigned@telemed.local    / Patient123!    (PATIENT - no clinician)
 
 Run with: python seed_data.py
 """
@@ -35,6 +47,148 @@ NUM_CLINICIANS   = 15
 NUM_ADMINS       = 3
 REPORTS_PER_DAY  = 90   # days of history to generate
 NUM_PERF_METRICS = 500
+
+# ─────────────────────────────────────────────
+#  Deterministic Test Accounts
+#  Seeded FIRST so IDs are predictable (1, 2, 3, ...)
+# ─────────────────────────────────────────────
+TEST_ADMIN_PW       = "Admin123!"
+TEST_CLINICIAN_PW   = "Clinician123!"
+TEST_PATIENT_PW     = "Patient123!"
+
+TEST_ACCOUNTS = [
+    # --- Admins ---
+    {
+        "email": "admin@telemed.local",
+        "password": TEST_ADMIN_PW,
+        "fullName": "Admin User",
+        "phone": "+263-77-000-0001",
+        "role": "ADMIN",
+    },
+    # --- Clinicians ---
+    {
+        "email": "clinician.cardiology@telemed.local",
+        "password": TEST_CLINICIAN_PW,
+        "fullName": "Dr. Chiedza Moyo",
+        "phone": "+263-77-000-0011",
+        "role": "CLINICIAN",
+        "specialization": "Cardiology",
+    },
+    {
+        "email": "clinician.pulmonology@telemed.local",
+        "password": TEST_CLINICIAN_PW,
+        "fullName": "Dr. Garikai Ncube",
+        "phone": "+263-77-000-0012",
+        "role": "CLINICIAN",
+        "specialization": "Pulmonology",
+    },
+    {
+        "email": "clinician.unassigned@telemed.local",
+        "password": TEST_CLINICIAN_PW,
+        "fullName": "Dr. Rudo Sibanda",
+        "phone": "+263-77-000-0013",
+        "role": "CLINICIAN",
+        "specialization": "General Practice",
+        "edge_case": "no_patients",  # This clinician will have NO patient assignments
+    },
+    # --- Patients ---
+    {
+        "email": "patient.asthma@telemed.local",
+        "password": TEST_PATIENT_PW,
+        "fullName": "Tendai Dube",
+        "phone": "+263-77-000-0021",
+        "role": "PATIENT",
+        "patient_profile": {
+            "chronicConditions": ["asthma"],
+            "allergies": ["penicillin"],
+            "baselineStatus": "fragile",
+            "gender": "Female",
+            "dateOfBirth": "1990-03-15T00:00:00",
+            "careContext": "ASTHMA_FOLLOWUP",
+            "careReason": "Monitoring asthma exacerbation",
+        },
+    },
+    {
+        "email": "patient.hypertension@telemed.local",
+        "password": TEST_PATIENT_PW,
+        "fullName": "Farai Ndlela",
+        "phone": "+263-77-000-0022",
+        "role": "PATIENT",
+        "patient_profile": {
+            "chronicConditions": ["hypertension"],
+            "allergies": ["aspirin"],
+            "baselineStatus": "stable",
+            "gender": "Male",
+            "dateOfBirth": "1975-08-22T00:00:00",
+            "careContext": "CHRONIC_DISEASE_MONITORING",
+            "careReason": "Blood pressure management",
+        },
+    },
+    {
+        "email": "patient.diabetes@telemed.local",
+        "password": TEST_PATIENT_PW,
+        "fullName": "Nyasha Nyoni",
+        "phone": "+263-77-000-0023",
+        "role": "PATIENT",
+        "patient_profile": {
+            "chronicConditions": ["diabetes"],
+            "allergies": [],
+            "baselineStatus": "stable",
+            "gender": "Female",
+            "dateOfBirth": "1985-11-10T00:00:00",
+            "careContext": "CHRONIC_DISEASE_MONITORING",
+            "careReason": "T2DM glycaemic control",
+        },
+    },
+    {
+        "email": "patient.postop@telemed.local",
+        "password": TEST_PATIENT_PW,
+        "fullName": "Tafadzwa Gumbo",
+        "phone": "+263-77-000-0024",
+        "role": "PATIENT",
+        "patient_profile": {
+            "chronicConditions": [],
+            "allergies": [],
+            "baselineStatus": "stable",
+            "gender": "Male",
+            "dateOfBirth": "1992-06-05T00:00:00",
+            "careContext": "POST_SURGERY_RECOVERY",
+            "careReason": "Post-appendectomy recovery",
+        },
+    },
+    {
+        "email": "patient.unassigned@telemed.local",
+        "password": TEST_PATIENT_PW,
+        "fullName": "Chipo Hove",
+        "phone": "+263-77-000-0025",
+        "role": "PATIENT",
+        "patient_profile": {
+            "chronicConditions": [],
+            "allergies": ["penicillin"],
+            "baselineStatus": "stable",
+            "gender": "Female",
+            "dateOfBirth": "1988-01-20T00:00:00",
+            "careContext": "GENERAL_REVIEW",
+            "careReason": "Routine symptom review",
+        },
+        "edge_case": "no_clinician",  # This patient will have NO clinician assignment
+    },
+]
+
+# Test assignment rules: which test patients are assigned to which test clinicians
+# Indexed by position in TEST_ACCOUNTS list
+TEST_ASSIGNMENTS = [
+    # patient.asthma assigned to clinician.cardiology AND clinician.pulmonology
+    {"patient_idx": 4, "clinician_idx": 1, "careContext": "ASTHMA_FOLLOWUP", "reason": "Monitoring asthma exacerbation"},
+    {"patient_idx": 4, "clinician_idx": 2, "careContext": "ASTHMA_FOLLOWUP", "reason": "Asthma + cardiac co-monitoring"},
+    # patient.hypertension assigned to clinician.cardiology
+    {"patient_idx": 5, "clinician_idx": 1, "careContext": "CHRONIC_DISEASE_MONITORING", "reason": "Blood pressure management"},
+    # patient.diabetes assigned to clinician.cardiology
+    {"patient_idx": 6, "clinician_idx": 1, "careContext": "CHRONIC_DISEASE_MONITORING", "reason": "T2DM glycaemic control"},
+    # patient.postop assigned to clinician.pulmonology
+    {"patient_idx": 7, "clinician_idx": 2, "careContext": "POST_SURGERY_RECOVERY", "reason": "Post-appendectomy recovery"},
+    # NOTE: patient.unassigned and clinician.unassigned have NO assignments (edge case)
+]
 
 # ─────────────────────────────────────────────
 #  Name pools (Zimbabwean / Southern African)
@@ -222,6 +376,91 @@ async def clear_database():
     await db.clinician.delete_many()
     await db.user.delete_many()
     print("  ✓ Database cleared")
+
+
+async def seed_test_accounts() -> dict:
+    """
+    Seed deterministic test accounts FIRST so they get predictable IDs.
+    Returns a dict with references to the created users, patients, clinicians.
+
+    These accounts are specifically designed for RBAC testing:
+    - Known credentials that developers can use to log in
+    - Edge-case accounts (unassigned patient, unassigned clinician)
+    - Clear clinical profiles for each patient
+    """
+    print("Seeding deterministic test accounts...")
+    result = {
+        "users": [],
+        "patients": [],
+        "clinicians": [],
+        "admins": [],
+        "test_user_map": {},  # email -> user record
+        "test_patient_map": {},  # email -> patient record
+        "test_clinician_map": {},  # email -> clinician record
+    }
+
+    for account in TEST_ACCOUNTS:
+        pw_hashed = hashPassword(account["password"])
+
+        user = await db.user.create(data={
+            "email":     account["email"],
+            "password":  pw_hashed,
+            "fullName":  account["fullName"],
+            "phone":     account["phone"],
+            "role":      account["role"],
+            "createdAt": past_ts(300),
+        })
+        result["users"].append(user)
+        result["test_user_map"][account["email"]] = user
+
+        if account["role"] == "ADMIN":
+            result["admins"].append(user)
+
+        elif account["role"] == "CLINICIAN":
+            clinician = await db.clinician.create(data={
+                "userId":         user.id,
+                "fullName":       account["fullName"],
+                "specialization": account.get("specialization", "General Practice"),
+            })
+            result["clinicians"].append(clinician)
+            result["test_clinician_map"][account["email"]] = clinician
+
+        elif account["role"] == "PATIENT":
+            profile = account.get("patient_profile", {})
+            patient = await db.patient.create(data={
+                "userId":            user.id,
+                "emergencyContact":  phone(),
+                "dateOfBirth":       datetime.fromisoformat(profile.get("dateOfBirth", "1990-01-01T00:00:00")),
+                "gender":            profile.get("gender", "Prefer not to say"),
+                "chronicConditions": json.dumps(profile.get("chronicConditions", [])),
+                "allergies":         json.dumps(profile.get("allergies", [])),
+                "baselineStatus":    profile.get("baselineStatus", "stable"),
+                "updatedAt":         datetime.now(),
+            })
+            result["patients"].append(patient)
+            result["test_patient_map"][account["email"]] = patient
+
+    # Seed test assignments using the deterministic rules
+    test_assignments = []
+    for rule in TEST_ASSIGNMENTS:
+        patient_email = TEST_ACCOUNTS[rule["patient_idx"]]["email"]
+        clinician_email = TEST_ACCOUNTS[rule["clinician_idx"]]["email"]
+        patient_rec = result["test_patient_map"][patient_email]
+        clinician_rec = result["test_clinician_map"][clinician_email]
+
+        assignment = await db.assignment.create(data={
+            "patientId":   patient_rec.id,
+            "clinicianId": clinician_rec.id,
+            "status":      "ACTIVE",
+            "careContext": rule["careContext"],
+            "reason":      rule["reason"],
+            "assignedAt":  past_ts(180),
+        })
+        test_assignments.append(assignment)
+
+    print(f"  ✓ {len(result['admins'])} admin, {len(result['clinicians'])} clinicians, {len(result['patients'])} patients")
+    print(f"  ✓ {len(test_assignments)} deterministic assignments")
+    return result
 
 
 async def seed_users() -> dict:
@@ -534,6 +773,11 @@ async def main():
         await clear_database()
         print()
 
+        # Seed deterministic test accounts FIRST (predictable IDs)
+        test_data = await seed_test_accounts()
+        print()
+
+        # Seed bulk random data
         users      = await seed_users()
         print()
         patients   = await seed_patients(users)
@@ -552,18 +796,34 @@ async def main():
         print("=" * 62)
         print("  SEED SUMMARY")
         print("=" * 62)
-        total_users = NUM_ADMINS + NUM_PATIENTS + NUM_CLINICIANS
-        print(f"  Users:            {total_users}  ({NUM_ADMINS} admins, {NUM_PATIENTS} patients, {NUM_CLINICIANS} clinicians)")
-        print(f"  Patient records:  {len(patients)}")
-        print(f"  Clinician records:{len(clinicians)}")
+        total_test = len(TEST_ACCOUNTS)
+        total_bulk = NUM_ADMINS + NUM_PATIENTS + NUM_CLINICIANS
+        print(f"  Test accounts:    {total_test}")
+        print(f"  Bulk users:       {total_bulk}  ({NUM_ADMINS} admins, {NUM_PATIENTS} patients, {NUM_CLINICIANS} clinicians)")
+        print(f"  Patient records:  {len(test_data['patients']) + len(patients)}")
+        print(f"  Clinician records:{len(test_data['clinicians']) + len(clinicians)}")
         print(f"  Assignments:      {len(assignments)}")
         print(f"  Symptom reports:  {len(intelligence['reports'])}  (scored by real engine)")
         print(f"  Alerts generated: {alerts_total}  (logic-derived, not random)")
         print(f"  Perf metrics:     {len(metrics)}")
         print("=" * 62)
         print()
-        print("  Login credentials:  password123  (all users)")
-        print("  Admin email:        admin.1@telemed.local")
+
+        # Print test credentials table
+        print("=" * 62)
+        print("  DETERMINISTIC TEST ACCOUNTS")
+        print("=" * 62)
+        header = f"  {'Email':<42} {'Password':<16} {'Role':<12}"
+        print(header)
+        print("  " + "-" * 70)
+        for account in TEST_ACCOUNTS:
+            edge = " *" if account.get("edge_case") else ""
+            row = f"  {account['email']:<42} {account['password']:<16} {account['role']:<12}{edge}"
+            print(row)
+        print("  " + "-" * 70)
+        print("  * = edge-case account (unassigned patient/clinician)")
+        print()
+        print("  Bulk users password: password123")
         print()
         print("  Seed completed successfully ✓")
 

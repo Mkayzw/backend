@@ -1,5 +1,4 @@
 # Small helpers for HTTP-layer concerns.
-# Keeping these tiny prevents copy/paste across controllers.
 
 from fastapi import HTTPException
 

@@ -1,7 +1,6 @@
 """
 Dashboard Routes with Patient Prioritization
 
-Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 14.6, 14.7, 12.6
 """
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
@@ -17,7 +16,6 @@ async def getStats():
     """
     Get platform statistics.
     
-    Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
     """
     return await controller.getStats()
 
@@ -27,7 +25,7 @@ async def getRecentActivity():
     """
     Get recent platform activity.
     
-    Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+    
     """
     return await controller.getRecentActivity()
 
@@ -44,8 +42,6 @@ async def getPrioritizedPatients(
     1. Risk level (HIGH first)
     2. Trend status (WORSENING first)
     3. Submission time (most recent first)
-    
-    Requirements: 14.6, 14.7
     """
     return await controller.getPrioritizedPatients(clinicianId, current_user)
 
@@ -58,6 +54,5 @@ async def getPatientTrendData(
     """
     Get trend data for a specific patient.
     
-    Requirements: 12.6
     """
     return await controller.getPatientTrendData(patientId, current_user)

@@ -1,13 +1,6 @@
-"""
-Authentication Controller
-
-Handles authentication HTTP requests.
-
-Requirements: 16.1, 16.6, 16.7
-"""
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
 from pydantic import BaseModel
-from app.services.auth import authenticateUser, getCurrentUser
+from app.services.auth import authenticateUser, getCurrentUser, registerUser, checkSignupRateLimit
 
 
 class LoginRequest(BaseModel):
@@ -31,13 +24,8 @@ class UserInfoResponse(BaseModel):
 
 
 async def login(payload: LoginRequest) -> LoginResponse:
-    """
-    Authenticate user and return token.
-    
-    Returns 401 for invalid credentials.
-    
-    Requirements: 16.1, 16.6
-    """
+
+
     user = await authenticateUser(payload.email, payload.password)
     
     if not user:
@@ -56,11 +44,43 @@ async def login(payload: LoginRequest) -> LoginResponse:
     )
 
 
+async def signup(payload, request: Request) -> dict:
+    """
+    Register a new user and return token for auto-login.
+    
+    Validates password strength, email uniqueness, and role constraints.
+    Applies rate limiting to prevent abuse.
+    """
+    # Rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    if not checkSignupRateLimit(client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many signup attempts. Please try again later.",
+        )
+    
+    # Validate CLINICIAN role requires specialization
+    if payload.role == "CLINICIAN" and not payload.specialization:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Specialization is required for clinician accounts",
+        )
+    
+    result = await registerUser(
+        email=payload.email,
+        password=payload.password,
+        fullName=payload.fullName,
+        phone=payload.phone,
+        role=payload.role,
+        specialization=payload.specialization,
+    )
+    
+    return result
+
+
 async def getCurrentUserInfo(current_user: dict = Depends(getCurrentUser)) -> UserInfoResponse:
     """
     Get current authenticated user info.
-    
-    Requirements: 16.7
     """
     return UserInfoResponse(
         id=current_user["id"],

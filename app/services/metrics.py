@@ -3,8 +3,6 @@ Performance Metrics Service
 
 Collects and reports API performance metrics including latency, error rates,
 and risk classification accuracy.
-
-Requirements: 17.1, 17.2, 17.3, 17.4, 17.7, 17.8
 """
 from app.db import db
 from datetime import datetime, timedelta
@@ -24,8 +22,6 @@ async def logRequestMetrics(
 ) -> None:
     """
     Log request performance metrics.
-    
-    Requirements: 17.1
     """
     await db.performancemetric.create(
         data={
@@ -173,8 +169,6 @@ async def getRiskClassificationAccuracy() -> Dict[str, Any]:
     Get risk classification accuracy metrics.
     
     This compares risk classifications against clinician reviews when available.
-    
-    Requirements: 17.8
     """
     # Get all HIGH risk classifications
     high_risk_reports = await db.symptomreport.find_many(
@@ -218,7 +212,6 @@ async def cleanupOldMetrics() -> int:
     """
     Delete metrics older than 30 days.
     
-    Requirements: 17.7
     """
     cutoff_date = datetime.now() - timedelta(days=30)
     
@@ -232,8 +225,7 @@ async def cleanupOldMetrics() -> int:
 class MetricsMiddleware:
     """
     Middleware for automatic request timing and metrics collection.
-    
-    Requirements: 17.1
+
     """
     
     def __init__(self, app):

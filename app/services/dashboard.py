@@ -1,9 +1,6 @@
 """
 Dashboard Service — Decision View
 
-Surfaces the information a clinician needs to answer:
-  "Who needs attention right now?"
-
 Priority order for patients:
   1. Risk level      — HIGH first
   2. Trend status    — WORSENING first

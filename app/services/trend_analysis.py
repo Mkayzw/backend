@@ -128,7 +128,7 @@ async def analyzeTrend(patientId: int, currentSeverity: str) -> Tuple[str, dict]
 
 
 async def updatePatientTrendStatus(patientId: int, trendStatus: str) -> None:
-    """Update the patient's current trend status in the database."""
+    #Update the patient's current trend status in the database.
     await db.patient.update(
         where={"id": patientId},
         data={

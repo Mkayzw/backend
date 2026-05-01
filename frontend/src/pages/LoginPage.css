@@ -1,0 +1,236 @@
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-navy);
+  position: relative;
+  overflow: hidden;
+  padding: 24px;
+}
+
+.login-bg-shapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.login-shape {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.08;
+}
+
+.login-shape--1 {
+  width: 600px;
+  height: 600px;
+  background: var(--color-teal);
+  top: -200px;
+  right: -100px;
+  animation: pulse 6s ease-in-out infinite;
+}
+
+.login-shape--2 {
+  width: 400px;
+  height: 400px;
+  background: var(--color-blue);
+  bottom: -100px;
+  left: -100px;
+  animation: pulse 8s ease-in-out infinite 1s;
+}
+
+.login-shape--3 {
+  width: 250px;
+  height: 250px;
+  background: var(--color-success);
+  top: 50%;
+  left: 60%;
+  animation: pulse 7s ease-in-out infinite 2s;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  padding: 40px 36px;
+  box-shadow: var(--shadow-xl);
+  position: relative;
+  z-index: 1;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.login-logo {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--color-teal), var(--color-blue));
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin: 0 auto 16px;
+  box-shadow: 0 6px 20px rgba(79, 192, 208, 0.3);
+}
+
+.login-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.02em;
+}
+
+.login-desc {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.login-error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: 1px solid rgba(235, 87, 87, 0.2);
+}
+
+.login-input-wrap {
+  position: relative;
+}
+
+.login-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.login-input {
+  padding-left: 42px !important;
+  width: 100%;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 12px;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 16px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.login-divider span {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-quick-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  color: var(--color-text);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.login-quick-btn:hover {
+  border-color: var(--color-teal);
+  box-shadow: var(--shadow-sm);
+}
+
+.login-quick-btn svg {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.login-quick-role {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-quick-role--admin {
+  background: rgba(79, 192, 208, 0.12);
+  color: var(--color-teal);
+}
+
+.login-quick-role--clinician {
+  background: rgba(27, 107, 147, 0.12);
+  color: var(--color-blue);
+}
+
+.login-quick-role--patient {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.login-quick-label {
+  font-weight: 500;
+}
+
+.login-footer-text {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.login-link {
+  color: var(--color-blue);
+  font-weight: 600;
+}
+
+.login-link:hover {
+  text-decoration: underline;
+}

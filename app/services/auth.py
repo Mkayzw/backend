@@ -3,7 +3,6 @@ Authentication and Authorization Service
 
 Implements JWT-based authentication with role-based access control.
 
-Requirements: 16.1, 16.2, 16.3, 16.4, 16.5, 16.6, 16.7, 16.8
 """
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -19,10 +18,14 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # JWT settings
 SECRET_KEY = "U9DD6Q0xG27J8mEIeQbmWzvF1851BJceMOUa4LfvhnI="  
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24  # Requirement 16.8
+ACCESS_TOKEN_EXPIRE_HOURS = 24 
 
 # Security scheme
 security = HTTPBearer()
+
+# Simple in-memory rate limiter for signup
+_signup_attempts: dict = {}  # {"ip": [timestamp, ...]}
+SIGNUP_RATE_LIMIT = 5  # max attempts per hour
 
 
 def hashPassword(password: str) -> str:
@@ -43,7 +46,6 @@ def createAccessToken(user_id: int, role: str) -> str:
     """
     Create a JWT access token with 24h expiration.
     
-    Requirements: 16.8
     """
     expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     
@@ -70,13 +72,105 @@ def decodeAccessToken(token: str) -> Optional[dict]:
         return None
 
 
+def checkSignupRateLimit(client_ip: str) -> bool:
+    """
+    Check if the client IP has exceeded signup rate limit.
+    Returns True if the request is allowed, False if rate limited.
+    """
+    now = datetime.utcnow()
+    one_hour_ago = now - timedelta(hours=1)
+    
+    if client_ip not in _signup_attempts:
+        _signup_attempts[client_ip] = []
+    
+    # Remove timestamps older than 1 hour
+    _signup_attempts[client_ip] = [
+        ts for ts in _signup_attempts[client_ip] if ts > one_hour_ago
+    ]
+    
+    if len(_signup_attempts[client_ip]) >= SIGNUP_RATE_LIMIT:
+        return False
+    
+    _signup_attempts[client_ip].append(now)
+    return True
+
+
+async def registerUser(
+    email: str,
+    password: str,
+    fullName: str,
+    phone: Optional[str] = None,
+    role: str = "PATIENT",
+    specialization: Optional[str] = None,
+) -> dict:
+    """
+    Register a new user with automatic profile creation.
+    
+    - Creates User record with hashed password
+    - If PATIENT: auto-creates Patient record with defaults
+    - If CLINICIAN: requires specialization; auto-creates Clinician record
+    - Returns user data with JWT token (auto-login after signup)
+    """
+    # Check for duplicate email
+    existing = await db.user.find_unique(where={"email": email})
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists",
+        )
+    
+    # Create user record
+    user = await db.user.create(data={
+        "email": email,
+        "password": hashPassword(password),
+        "fullName": fullName,
+        "phone": phone,
+        "role": role,
+    })
+    
+    # Auto-create role-specific profile
+    if role == "PATIENT":
+        await db.patient.create(data={
+            "userId": user.id,
+            "emergencyContact": "",
+            "dateOfBirth": datetime.utcnow(),
+            "gender": "Prefer not to say",
+            "chronicConditions": "[]",
+            "allergies": "[]",
+            "baselineStatus": "stable",
+        })
+    elif role == "CLINICIAN":
+        if not specialization:
+            # Clean up the user we just created
+            await db.user.delete(where={"id": user.id})
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Specialization is required for clinician accounts",
+            )
+        await db.clinician.create(data={
+            "userId": user.id,
+            "fullName": fullName,
+            "specialization": specialization,
+        })
+    
+    # Create access token
+    token = createAccessToken(user.id, user.role)
+    
+    return {
+        "id": user.id,
+        "email": user.email,
+        "fullName": user.fullName,
+        "role": user.role,
+        "token": token,
+    }
+
+
 async def authenticateUser(email: str, password: str) -> Optional[dict]:
     """
     Authenticate a user by email and password.
     
     Returns the user with token or None if authentication fails.
-    
-    Requirements: 16.1, 16.6
+
     """
     user = await db.user.find_unique(where={"email": email})
     
@@ -102,7 +196,6 @@ async def getCurrentUser(credentials: HTTPAuthorizationCredentials = Depends(sec
     """
     FastAPI dependency to get the current authenticated user.
     
-    Requirements: 16.6, 16.7
     """
     token = credentials.credentials
     
@@ -138,12 +231,6 @@ def requireRole(allowed_roles: List[str]):
     """
     FastAPI dependency factory for role-based access control.
     
-    Usage:
-        @router.get("/admin-only")
-        async def admin_endpoint(user: dict = Depends(requireRole(["ADMIN"]))):
-            ...
-    
-    Requirements: 16.2
     """
     async def role_checker(current_user: dict = Depends(getCurrentUser)) -> dict:
         if current_user["role"] not in allowed_roles:

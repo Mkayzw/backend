@@ -23,6 +23,7 @@ async def createPatient(payload: CreatePatient):
     return await patientService.createPatient(
         userId=payload.userId,
         emergencyContact=payload.emergencyContact,
+        address=payload.address,
         dateOfBirth=payload.dateOfBirth,
         gender=payload.gender,
         chronicConditions=chronic_json,
@@ -53,6 +54,7 @@ async def updatePatient(patientId: int, payload: UpdatePatient):
     return await patientService.updatePatient(
         patientId=patientId,
         emergencyContact=payload.emergencyContact,
+        address=payload.address,
         dateOfBirth=payload.dateOfBirth,
         gender=payload.gender,
         chronicConditions=chronic_json,

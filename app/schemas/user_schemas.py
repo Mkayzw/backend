@@ -18,7 +18,7 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
-    email: EmailStr
+    email: str
     fullname: str | None = Field(default=None, alias="fullName")
     phone: str | None = None
     role: str
@@ -30,7 +30,7 @@ class LoginReq(BaseModel):
 class LoginResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
     id: int
-    email: EmailStr
+    email: str
     fullname: str | None = Field(default=None, alias="fullName")
     role: str
 

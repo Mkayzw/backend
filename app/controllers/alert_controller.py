@@ -3,7 +3,7 @@ Alert Controller
 
 Handles alert-related HTTP requests.
 
-Requirements: 13.8, 13.9
+
 """
 from fastapi import HTTPException, status, Depends
 from typing import Optional, List
@@ -22,7 +22,7 @@ async def getAlertsList(
     
     Only CLINICIAN and ADMIN roles can access alerts.
     
-    Requirements: 13.8, 13.9
+
     """
     alerts = await getAlerts(priority=priority, isRead=isRead, limit=limit)
     return alerts
@@ -35,7 +35,7 @@ async def markAlertRead(
     """
     Mark an alert as read.
     
-    Requirements: 13.8
+  
     """
     try:
         alert = await markAlertAsRead(alertId)

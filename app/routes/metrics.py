@@ -20,7 +20,6 @@ async def get_error_rate(
     
     ADMIN only.
     
-    Requirements: 17.3
     """
     return await getErrorRate(days)
 
@@ -35,7 +34,6 @@ async def get_latency_stats(
     
     ADMIN only.
     
-    Requirements: 17.4
     """
     return await getLatency(days)
 
@@ -47,6 +45,5 @@ async def get_risk_accuracy(current_user: dict = Depends(requireRole(["ADMIN", "
     
     ADMIN and CLINICIAN only.
     
-    Requirements: 17.8
     """
     return await getRiskAccuracy(current_user)

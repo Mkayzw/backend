@@ -79,7 +79,7 @@ async def generateTrendAlert(
     if trendStatus != "WORSENING":
         return None
 
-    base = "Patient condition is WORSENING based on trend analysis — clinical review recommended."
+    base = "Patient condition is WORSENING based on trend analysis clinical review recommended."
     message = f"{base}\nLatest report: {riskExplanation}" if riskExplanation else base
 
     return await generateAlert(

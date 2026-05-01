@@ -11,6 +11,7 @@ from app.schemas.user_schemas import UserResponse
 class CreatePatient(BaseModel):
     userId:            int
     emergencyContact:  str
+    address:           Optional[str] = None
     dateOfBirth:       datetime
     gender:            str
     chronicConditions: Optional[List[str]] = None  # e.g. ["asthma", "diabetes"]
@@ -20,6 +21,7 @@ class CreatePatient(BaseModel):
 
 class UpdatePatient(BaseModel):
     emergencyContact:  Optional[str]       = None
+    address:           Optional[str]       = None
     dateOfBirth:       Optional[datetime]  = None
     gender:            Optional[str]       = None
     chronicConditions: Optional[List[str]] = None
@@ -33,6 +35,7 @@ class PatientResponse(BaseModel):
     id:               int
     userId:           int
     emergencyContact: str
+    address:          Optional[str] = None
     dateOfBirth:      datetime
     gender:           str
     updatedAt:        datetime

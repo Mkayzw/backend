@@ -4,6 +4,7 @@ Assignment Schemas — includes care context for clinical meaning.
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from app.schemas.clinician_schema import ClinicianResponse
 
 VALID_CARE_CONTEXTS = {
     "ASTHMA_FOLLOWUP",
@@ -36,3 +37,4 @@ class AssignmentResponse(BaseModel):
     endedAt:     Optional[datetime] = None
     careContext: str
     reason:      Optional[str]     = None
+    clinician:   Optional[ClinicianResponse] = None

@@ -88,6 +88,8 @@ model Patient {
   id               Int       @id @default(autoincrement())
   userId           Int       @unique
   emergencyContact String
+  // Physical address (used for emergency dispatch when an alert is raised)
+  address          String?
   dateOfBirth      DateTime
   gender           String
   updatedAt        DateTime  @updatedAt

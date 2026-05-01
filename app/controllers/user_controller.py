@@ -45,7 +45,7 @@ async def deleteUser(userId:int):
     if not user:
         raise HTTPException(status_code=404,detail="user not found")
     await userService.deleteUser(userId)
-    return{"message":"user sucessfull deleted"}
+    return{"message":"user sucessfully deleted"}
 
 async def updateUser(userId: int, fullName: str | None, phone: str | None):
      user=await userService.getUserById(userId)

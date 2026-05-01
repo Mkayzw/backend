@@ -1,12 +1,5 @@
 # Prisma Query Notes
 
-This file is a working guide for database queries in this backend.
-
-It is intentionally example-driven:
-
-- It does not show full FastAPI route or service code
-- It focuses on how Prisma queries are shaped
-- It uses the Python Prisma client this repo is already configured for
 
 ## 1. What Prisma Is Doing Here
 

@@ -22,7 +22,7 @@ VALID_FREQUENCIES = {"FIRST_TIME", "RECURRING", "CHRONIC"}
 
 class CreateSymptomReport(BaseModel):
     patientId:          int
-    symptoms:           List[str]        # e.g. ["chest_pain", "dizziness"]
+    symptoms:           List[str]        
     severity:           str              # MILD | MODERATE | SEVERE | CRITICAL
     durationDays:       int              # days symptoms have persisted
     frequency:          str              # FIRST_TIME | RECURRING | CHRONIC

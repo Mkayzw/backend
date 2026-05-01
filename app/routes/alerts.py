@@ -1,7 +1,7 @@
 """
 Alert Routes
 
-Requirements: 13.8, 13.9
+
 """
 from fastapi import APIRouter, Depends, Query
 from typing import Optional, List
@@ -23,7 +23,6 @@ async def list_alerts(
     
     Returns alerts sorted by priority (HIGH first) and timestamp (most recent first).
     
-    Requirements: 13.8, 13.9
     """
     return await getAlertsList(priority=priority, isRead=isRead, limit=limit, current_user=current_user)
 
@@ -36,7 +35,7 @@ async def mark_alert_read(
     """
     Mark an alert as read.
     
-    Requirements: 13.8
+
     """
     return await markAlertRead(alertId, current_user=current_user)
 

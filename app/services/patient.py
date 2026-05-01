@@ -19,8 +19,9 @@ async def getPatientbyUserId(userId: int):
 async def createPatient(
     userId: int,
     emergencyContact: str,
-    dateOfBirth,
     gender: str,
+    dateOfBirth: datetime,
+    address: str | None = None,
     chronicConditions: str | None = None,  # JSON array string e.g. '["asthma"]'
     allergies: str | None = None,           # JSON array string e.g. '["penicillin"]'
     baselineStatus: str | None = None,      # "stable" | "fragile" | "unknown"
@@ -29,6 +30,7 @@ async def createPatient(
         data={
             "userId":            userId,
             "emergencyContact":  emergencyContact,
+            "address":           address,
             "dateOfBirth":       dateOfBirth,
             "gender":            gender,
             "chronicConditions": chronicConditions,
@@ -42,6 +44,7 @@ async def createPatient(
 async def updatePatient(
     patientId: int,
     emergencyContact: str | None = None,
+    address: str | None = None,
     dateOfBirth=None,
     gender: str | None = None,
     chronicConditions: str | None = None,
@@ -51,6 +54,8 @@ async def updatePatient(
     data = {}
     if emergencyContact is not None:
         data["emergencyContact"] = emergencyContact
+    if address is not None:
+        data["address"] = address
     if dateOfBirth is not None:
         data["dateOfBirth"] = dateOfBirth
     if gender is not None:

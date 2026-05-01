@@ -1,7 +1,7 @@
 """
 Dashboard Controller with Patient Prioritization
 
-Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 14.6, 14.7, 12.6
+
 """
 from fastapi import Depends, HTTPException, status
 from typing import Optional
@@ -13,7 +13,7 @@ async def getStats():
     """
     Get platform statistics.
     
-    Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+
     """
     return await dashboardService.getStats()
 
@@ -22,7 +22,7 @@ async def getRecentActivity():
     """
     Get recent platform activity.
     
-    Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+   .5
     """
     return await dashboardService.getRecentActivity()
 
@@ -34,7 +34,7 @@ async def getPrioritizedPatients(
     """
     Get patients sorted by risk level, trend status, and submission time.
     
-    Requirements: 14.6, 14.7
+
     """
     # If user is a clinician, filter to only their assigned patients
     if current_user["role"] == "CLINICIAN":
@@ -56,7 +56,7 @@ async def getPatientTrendData(
     """
     Get trend data for a specific patient.
     
-    Requirements: 12.6
+
     """
     # Check access
     has_access = await checkDataAccess(current_user, "patient", patientId)

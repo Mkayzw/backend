@@ -52,9 +52,7 @@ SYMPTOM_WEIGHTS: dict[str, float] = {
     "rash":                  1.0,
 }
 
-# ─────────────────────────────────────────────
-#  Severity field → base score
-# ─────────────────────────────────────────────
+
 SEVERITY_SCORES: dict[str, float] = {
     "MILD":     0.0,
     "MODERATE": 1.0,
@@ -62,18 +60,16 @@ SEVERITY_SCORES: dict[str, float] = {
     "CRITICAL": 4.0,
 }
 
-# ─────────────────────────────────────────────
-#  Frequency → bonus score
-# ─────────────────────────────────────────────
+
 FREQUENCY_SCORES: dict[str, float] = {
     "FIRST_TIME": 0.0,
     "RECURRING":  0.5,
     "CHRONIC":    1.5,
 }
 
-# ─────────────────────────────────────────────
+
 #  Care context: symptom bonuses + baseline
-# ─────────────────────────────────────────────
+
 CARE_CONTEXT_BONUSES: dict[str, dict] = {
     "ASTHMA_FOLLOWUP": {
         "matching_symptoms": ["difficulty_breathing", "shortness_of_breath", "chest_pain", "cough"],
@@ -217,9 +213,8 @@ async def _analyzeReportFrequency(patientId: int) -> Tuple[float, int]:
     return 0.0, count
 
 
-# ─────────────────────────────────────────────
+
 #  Core scoring function
-# ─────────────────────────────────────────────
 
 async def computeRiskScore(
     patientId: int,
@@ -312,9 +307,9 @@ async def computeRiskScore(
     return total, factors
 
 
-# ─────────────────────────────────────────────
+
 #  Classification
-# ─────────────────────────────────────────────
+
 
 def classifyRiskLevel(risk_score: float) -> str:
     if risk_score >= RISK_THRESHOLDS["HIGH"]:

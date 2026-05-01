@@ -25,4 +25,8 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-```
+
+.kiro/
+.qoder/
+__pycache__/
+*.pyc
