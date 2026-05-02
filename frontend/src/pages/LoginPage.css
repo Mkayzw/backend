@@ -4,48 +4,7 @@
   align-items: center;
   justify-content: center;
   background: var(--color-navy);
-  position: relative;
-  overflow: hidden;
   padding: 24px;
-}
-
-.login-bg-shapes {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.login-shape {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.08;
-}
-
-.login-shape--1 {
-  width: 600px;
-  height: 600px;
-  background: var(--color-teal);
-  top: -200px;
-  right: -100px;
-  animation: pulse 6s ease-in-out infinite;
-}
-
-.login-shape--2 {
-  width: 400px;
-  height: 400px;
-  background: var(--color-blue);
-  bottom: -100px;
-  left: -100px;
-  animation: pulse 8s ease-in-out infinite 1s;
-}
-
-.login-shape--3 {
-  width: 250px;
-  height: 250px;
-  background: var(--color-success);
-  top: 50%;
-  left: 60%;
-  animation: pulse 7s ease-in-out infinite 2s;
 }
 
 .login-card {

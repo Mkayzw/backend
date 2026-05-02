@@ -35,12 +35,6 @@ export default function SignupPage() {
 
   return (
     <div className="login-page">
-      <div className="login-bg-shapes">
-        <div className="login-shape login-shape--1" />
-        <div className="login-shape login-shape--2" />
-        <div className="login-shape login-shape--3" />
-      </div>
-
       <div className="login-card animate-scale-in" style={{ maxWidth: 440 }}>
         <div className="login-header">
           <div className="login-logo">
