@@ -257,10 +257,37 @@ export default function ClinicianDashboard() {
                             </div>
                           </div>
 
+                          <div className="trend-info-grid" style={{ marginTop: 12 }}>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">DOB / Gender</span>
+                              <span className="trend-info-value">
+                                {trendData.dateOfBirth ? new Date(trendData.dateOfBirth).toLocaleDateString() : 'N/A'} · {trendData.gender || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">Emergency Contact</span>
+                              <span className="trend-info-value">{trendData.emergencyContact || 'N/A'}</span>
+                            </div>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">Phone</span>
+                              <span className="trend-info-value">{trendData.phone || 'N/A'}</span>
+                            </div>
+                            <div className="trend-info-card" style={{ gridColumn: 'span 2' }}>
+                              <span className="trend-info-label">Address</span>
+                              <span className="trend-info-value">{trendData.address || 'N/A'}</span>
+                            </div>
+                          </div>
+
                           {trendData.chronicConditions && trendData.chronicConditions !== '[]' && (
                             <div className="trend-conditions">
                               <Info size={14} />
                               <span>Chronic conditions: {JSON.parse(trendData.chronicConditions).join(', ')}</span>
+                            </div>
+                          )}
+                          {trendData.allergies && trendData.allergies !== '[]' && (
+                            <div className="trend-conditions" style={{ background: 'var(--color-danger-light)', color: 'var(--color-danger)' }}>
+                              <Info size={14} />
+                              <span>Allergies: {JSON.parse(trendData.allergies).join(', ')}</span>
                             </div>
                           )}
 
@@ -371,6 +398,40 @@ export default function ClinicianDashboard() {
                               <span className="trend-info-value">{trendData.careContext?.replace(/_/g, ' ') || 'N/A'}</span>
                             </div>
                           </div>
+
+                          <div className="trend-info-grid" style={{ marginTop: 12 }}>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">DOB / Gender</span>
+                              <span className="trend-info-value">
+                                {trendData.dateOfBirth ? new Date(trendData.dateOfBirth).toLocaleDateString() : 'N/A'} · {trendData.gender || 'N/A'}
+                              </span>
+                            </div>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">Emergency Contact</span>
+                              <span className="trend-info-value">{trendData.emergencyContact || 'N/A'}</span>
+                            </div>
+                            <div className="trend-info-card">
+                              <span className="trend-info-label">Phone</span>
+                              <span className="trend-info-value">{trendData.phone || 'N/A'}</span>
+                            </div>
+                            <div className="trend-info-card" style={{ gridColumn: 'span 2' }}>
+                              <span className="trend-info-label">Address</span>
+                              <span className="trend-info-value">{trendData.address || 'N/A'}</span>
+                            </div>
+                          </div>
+
+                          {trendData.chronicConditions && trendData.chronicConditions !== '[]' && (
+                            <div className="trend-conditions">
+                              <Info size={14} />
+                              <span>Chronic conditions: {JSON.parse(trendData.chronicConditions).join(', ')}</span>
+                            </div>
+                          )}
+                          {trendData.allergies && trendData.allergies !== '[]' && (
+                            <div className="trend-conditions" style={{ background: 'var(--color-danger-light)', color: 'var(--color-danger)' }}>
+                              <Info size={14} />
+                              <span>Allergies: {JSON.parse(trendData.allergies).join(', ')}</span>
+                            </div>
+                          )}
 
                           {trendChartData.length > 1 && (
                             <div className="trend-chart-wrap">

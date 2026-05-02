@@ -86,8 +86,8 @@ async def createSymptomReport(
         chronicConditions=chronic_conditions,
     )
 
-    # 5. Trend analysis — compares current severity against recent history
-    trend_status, _ = await analyzeTrend(patientId, severity)
+    # 5. Trend analysis — compares current risk score against recent history
+    trend_status, _ = await analyzeTrend(patientId, risk_score)
 
     # 6. Update report with computed risk data
     updated_report = await db.symptomreport.update(

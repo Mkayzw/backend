@@ -223,7 +223,7 @@ async def _create_report_with_intelligence(patient_id: int, report_input: Report
         chronicConditions=chronic_conditions,
     )
 
-    trend_status, _trend_details = await analyzeTrend(patient_id, report_input.severity)
+    trend_status, _trend_details = await analyzeTrend(patient_id, risk_score)
 
     updated_report = await db.symptomreport.update(
         where={"id": report.id},

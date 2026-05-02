@@ -3,23 +3,26 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { useNotifications } from '../../context/NotificationContext';
-import { dashboardAPI } from '../../api/dashboard';
 import { symptomReportsAPI } from '../../api/symptomReports';
 import { patientsAPI } from '../../api/patients';
 import { assignmentsAPI } from '../../api/assignments';
+import { usersAPI } from '../../api/users';
 import TopBar from '../../components/TopBar';
 import StatCard from '../../components/StatCard';
 import RiskBadge from '../../components/RiskBadge';
-import TrendIndicator from '../../components/TrendIndicator';
-import Modal from '../../components/Modal';
+
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {
   Heart, Activity, Shield, Stethoscope, FileHeart, Clock, Thermometer,
   HeartPulse, Pill, Send, Plus, ClipboardList, Calendar, AlertCircle,
-  LayoutDashboard
+  LayoutDashboard, UserCircle
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import './PatientDashboard.css';
+
+const COMMON_CONDITIONS = [
+  'asthma', 'copd', 'diabetes', 'hypertension', 'heart_disease', 'epilepsy'
+];
 
 const VALID_SYMPTOMS = [
   'chest_pain', 'difficulty_breathing', 'shortness_of_breath', 'severe_bleeding',
@@ -34,6 +37,7 @@ const PATIENT_TABS = [
   { key: 'report', path: '/patient/report' },
   { key: 'clinicians', path: '/patient/clinicians' },
   { key: 'history', path: '/patient/history' },
+  { key: 'profile', path: '/patient/profile' },
 ];
 const PATIENT_PATH_TO_TAB = Object.fromEntries(PATIENT_TABS.map(t => [t.path, t.key]));
 
@@ -53,6 +57,15 @@ export default function PatientDashboard() {
   const [reportForm, setReportForm] = useState({
     symptoms: [], severity: 'MILD', durationDays: 1, frequency: 'FIRST_TIME',
     notes: '', temperature: '', heartRate: '', medicationAdherent: null,
+  });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    phone: '',
+    emergencyContact: '',
+    address: '',
+    chronicConditions: [],
+    allergies: '',
+    baselineStatus: 'stable'
   });
 
   // Sync tab with URL changes (e.g. sidebar navigation)
@@ -93,6 +106,20 @@ export default function PatientDashboard() {
       setPatient(myPatient);
 
       if (myPatient) {
+        let chronic = [];
+        try { chronic = myPatient.chronicConditions ? JSON.parse(myPatient.chronicConditions) : []; } catch(e){}
+        let algs = [];
+        try { algs = myPatient.allergies ? JSON.parse(myPatient.allergies) : []; } catch(e){}
+        
+        setProfileForm({
+          phone: myPatient.user?.phone || '',
+          emergencyContact: myPatient.emergencyContact || '',
+          address: myPatient.address || '',
+          chronicConditions: chronic,
+          allergies: algs.join(', '),
+          baselineStatus: myPatient.baselineStatus || 'stable'
+        });
+
         try {
           const myReports = await symptomReportsAPI.getByPatient(myPatient.id);
           setReports(myReports);
@@ -149,6 +176,39 @@ export default function PatientDashboard() {
     }
   };
 
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    if (!patient) return;
+    setSavingProfile(true);
+    try {
+      await Promise.all([
+        patientsAPI.update(patient.id, {
+          emergencyContact: profileForm.emergencyContact,
+          address: profileForm.address,
+          chronicConditions: profileForm.chronicConditions,
+          allergies: profileForm.allergies.split(',').map(a => a.trim()).filter(a => a),
+          baselineStatus: profileForm.baselineStatus
+        }),
+        usersAPI.update(user.id, { phone: profileForm.phone || null }),
+      ]);
+      success('Profile updated successfully');
+      loadData();
+    } catch (err) {
+      toastError('Failed to update profile: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleConditionToggle = (condition) => {
+    setProfileForm(f => ({
+      ...f,
+      chronicConditions: f.chronicConditions.includes(condition)
+        ? f.chronicConditions.filter(c => c !== condition)
+        : [...f.chronicConditions, condition]
+    }));
+  };
+
   const formatSymptom = (s) => s.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
   const chartData = [...reports]
@@ -188,6 +248,9 @@ export default function PatientDashboard() {
           </button>
           <button className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => handleTabChange('history')}>
             <ClipboardList size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> My Reports
+          </button>
+          <button className={`tab ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => handleTabChange('profile')}>
+            <UserCircle size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Profile
           </button>
         </div>
 
@@ -478,6 +541,68 @@ export default function PatientDashboard() {
                 <p>No reports submitted yet</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Profile Tab */}
+        {activeTab === 'profile' && (
+          <div className="card" style={{ padding: 24 }}>
+            <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <UserCircle size={18} style={{ color: 'var(--color-teal)' }} /> Clinical Profile
+            </h3>
+            <form onSubmit={handleSaveProfile} className="report-form">
+              
+              <div className="report-form-row">
+                <div className="form-group">
+                  <label className="form-label">Phone Number</label>
+                  <input type="tel" className="form-input" placeholder="e.g. +263-77-000-0000" value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Emergency Contact</label>
+                  <input type="text" className="form-input" value={profileForm.emergencyContact} onChange={e => setProfileForm(f => ({ ...f, emergencyContact: e.target.value }))} required />
+                </div>
+              </div>
+
+              <div className="report-form-row">
+                <div className="form-group">
+                  <label className="form-label">Address</label>
+                  <input type="text" className="form-input" value={profileForm.address} onChange={e => setProfileForm(f => ({ ...f, address: e.target.value }))} />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Baseline Status</label>
+                <select className="form-select" value={profileForm.baselineStatus} onChange={e => setProfileForm(f => ({ ...f, baselineStatus: e.target.value }))}>
+                  <option value="stable">Stable</option>
+                  <option value="fragile">Fragile</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Chronic Conditions</label>
+                <div className="symptom-grid">
+                  {COMMON_CONDITIONS.map(c => (
+                    <button
+                      key={c} type="button"
+                      className={`symptom-chip ${profileForm.chronicConditions.includes(c) ? 'symptom-chip--active' : ''}`}
+                      onClick={() => handleConditionToggle(c)}
+                    >
+                      {formatSymptom(c)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Allergies (comma-separated)</label>
+                <input type="text" className="form-input" placeholder="e.g. penicillin, peanuts" value={profileForm.allergies} onChange={e => setProfileForm(f => ({ ...f, allergies: e.target.value }))} />
+              </div>
+
+              <button type="submit" className="btn btn-primary" disabled={savingProfile} style={{ width: '100%', marginTop: 8 }}>
+                {savingProfile ? 'Saving...' : 'Save Profile'}
+              </button>
+            </form>
           </div>
         )}
       </div>

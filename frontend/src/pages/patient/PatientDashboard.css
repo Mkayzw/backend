@@ -22,14 +22,14 @@
 }
 
 .clinician-card:hover {
-  border-color: var(--color-teal);
+  border-color: var(--color-primary);
   box-shadow: var(--shadow-sm);
 }
 
 .clinician-avatar {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--color-blue), var(--color-teal));
+  background: #2563EB;
   border-radius: var(--radius-full);
   display: flex;
   align-items: center;
@@ -85,7 +85,7 @@
 }
 
 .report-row:hover {
-  border-color: var(--color-teal);
+  border-color: var(--color-primary);
 }
 
 .report-date {
@@ -144,13 +144,13 @@
 }
 
 .symptom-chip:hover {
-  border-color: var(--color-teal);
+  border-color: var(--color-primary);
   color: var(--color-text);
 }
 
 .symptom-chip--active {
-  background: rgba(79, 192, 208, 0.12);
-  border-color: var(--color-teal);
-  color: var(--color-teal);
+  background: rgba(37, 99, 235, 0.08);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
   font-weight: 600;
 }

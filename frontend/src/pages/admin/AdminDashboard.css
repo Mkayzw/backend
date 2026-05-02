@@ -73,8 +73,8 @@
   flex-shrink: 0;
 }
 
-.activity-dot--report { background: var(--color-teal); }
-.activity-dot--user { background: var(--color-blue); }
+.activity-dot--report { background: #2563EB; }
+.activity-dot--user { background: #6366F1; }
 
 .activity-content {
   display: flex;

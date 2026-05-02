@@ -184,6 +184,27 @@ async def getPrioritizedPatients(clinicianId: Optional[int] = None) -> list:
     risk_order  = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     trend_order = {"WORSENING": 0, "STABLE": 1, "IMPROVING": 2}
 
+    # --- DEMO HACK: Dynamically recalculate trends on every GET request ---
+    # This allows you to tweak the trend algorithm in code and immediately
+    # see the results on the dashboard without needing a background worker
+    # or having to manually submit new symptom reports for everyone.
+    from app.services.trend_analysis import analyzeTrend
+
+    for patient in patients:
+        if patient.symptomReports:
+            current_report = patient.symptomReports[0]
+            # Recalculate using the latest engine logic
+            fresh_trend, _ = await analyzeTrend(patient.id, float(current_report.riskScore))
+            
+            # If it changed, save it to the DB and update the in-memory object
+            if str(patient.currentTrendStatus) != fresh_trend:
+                await db.patient.update(
+                    where={"id": patient.id},
+                    data={"currentTrendStatus": fresh_trend}
+                )
+                patient.currentTrendStatus = fresh_trend
+    # ----------------------------------------------------------------------
+
     def sort_key(patient):
         risk  = str(patient.currentRiskLevel)  if patient.currentRiskLevel  else "LOW"
         trend = str(patient.currentTrendStatus) if patient.currentTrendStatus else "STABLE"
@@ -234,6 +255,12 @@ async def getPatientTrendData(patientId: int) -> Optional[dict]:
         "patientId":          patient.id,
         "userId":             patient.userId,
         "userName":           patient.user.fullName if patient.user else None,
+        "phone":              patient.user.phone if patient.user else None,
+        "emergencyContact":   patient.emergencyContact,
+        "address":            patient.address,
+        "dateOfBirth":        patient.dateOfBirth.isoformat() if patient.dateOfBirth else None,
+        "gender":             patient.gender,
+        "allergies":          patient.allergies,
         "chronicConditions":  patient.chronicConditions,
         "baselineStatus":     patient.baselineStatus,
         "careContext":        str(active_assignment.careContext) if active_assignment else None,

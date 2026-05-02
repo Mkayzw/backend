@@ -2,15 +2,18 @@
 Trend Analysis Engine
 
 Analyzes sequential symptom reports to classify patient trajectory as:
-  IMPROVING  — severity decreasing over recent reports
-  STABLE     — no significant change
-  WORSENING  — severity increasing (triggers alert)
+  IMPROVING  — risk score decreasing significantly compared to recent baseline
+  STABLE     — no significant change in risk score
+  WORSENING  — risk score increasing significantly (triggers alert)
 
 Design decisions:
-  - Uses structured Severity enum for scoring (not free-text keyword grep)
-  - Falls back to notes keyword scan only if severity field unavailable
-  - Requires ≥ 3 historical reports before making a trend call (returns STABLE otherwise)
-  - Compares current submission against average of last 3 reports
+  - Uses the highly granular `riskScore` (0.0 to 15.0+) computed by the intelligence pipeline.
+  - Requires at least 3 total reports (1 current + 2 past) before making a trend call (returns STABLE otherwise).
+  - Calculates the baseline by averaging up to the 3 most recent *past* reports (strictly excluding the current report from the baseline).
+  - Rule overrides (applied before the delta threshold):
+      1. High-risk spike override: if any past report had a riskScore >= 10.0, the patient is WORSENING.
+      2. Volatility override: if the spread between the highest and lowest past scores > 5.0, the patient is WORSENING.
+  - If no override applies, triggers IMPROVING or WORSENING if the delta exceeds +/- 2.0; otherwise STABLE.
 """
 from app.db import db
 from datetime import datetime
@@ -19,45 +22,11 @@ import re
 
 MIN_HISTORICAL_REPORTS = 3
 
-# Structured severity → integer score (higher = more severe)
-SEVERITY_SCORE_MAP = {
-    "MILD":     0,
-    "MODERATE": 1,
-    "SEVERE":   2,
-    "CRITICAL": 3,
-}
-
-# Fallback: keyword patterns for legacy free-text reports (notes only)
-LEGACY_SEVERITY_KEYWORDS = {
-    r'\b(chest pain|difficulty breathing|severe bleeding|unconscious|stroke)\b': 3,
-    r'\b(high fever|persistent vomiting|severe pain|confusion|fainting|rapid heartbeat)\b': 2,
-    r'\b(fever|cough|headache|nausea|dizziness|fatigue|pain)\b': 1,
-    r'\b(better|improving|less pain|recovering|healing)\b': -1,
-}
-
-
-def _calculateSeverityScore(report) -> int:
+def _calculateSeverityScore(report) -> float:
     """
-    Calculate a severity score from a symptom report object.
-
-    Prefers the structured `severity` enum field. Falls back to notes keyword
-    scan for legacy reports that lack the structured field.
+    Extracts the intelligence pipeline's 'riskScore' directly from the report for high granularity.
     """
-    # Prefer structured severity field (primary path)
-    severity_val = getattr(report, 'severity', None)
-    if severity_val is not None:
-        # Prisma returns enum values; convert to string for mapping
-        key = str(severity_val).upper()
-        return SEVERITY_SCORE_MAP.get(key, 0)
-
-    # Fallback: keyword scan on notes
-    notes = getattr(report, 'notes', '') or ''
-    notes_lower = notes.lower()
-    total = 0
-    for pattern, score in LEGACY_SEVERITY_KEYWORDS.items():
-        if re.search(pattern, notes_lower):
-            total += score
-    return total
+    return float(getattr(report, 'riskScore', 0.0))
 
 
 async def getHistoricalReports(patientId: int, limit: int = 4) -> list:
@@ -72,51 +41,65 @@ async def getHistoricalReports(patientId: int, limit: int = 4) -> list:
     )
 
 
-async def analyzeTrend(patientId: int, currentSeverity: str) -> Tuple[str, dict]:
+async def analyzeTrend(patientId: int, currentRiskScore: float) -> Tuple[str, dict]:
     """
     Analyze the patient's health trend based on sequential symptom reports.
 
     Args:
-        patientId:       Patient to analyze.
-        currentSeverity: Severity of the report being submitted right now.
+        patientId:        Patient to analyze.
+        currentRiskScore: Granular risk score of the report being submitted right now.
 
     Returns: (trend_status, trend_details_dict)
     """
-    # Fetch enough historical reports (we look at the last MIN_HISTORICAL_REPORTS)
-    historical = await getHistoricalReports(patientId, limit=MIN_HISTORICAL_REPORTS + 1)
+    # Fetch historical reports (get enough to have up to 5 past reports, just in case)
+    historical = await getHistoricalReports(patientId, limit=6)
 
-    # Not enough history → default STABLE (requirement: no false positives)
-    if len(historical) < MIN_HISTORICAL_REPORTS:
+    # Exclude the current report (which is historical[0] since we order by desc)
+    past_reports = historical[1:] if len(historical) > 0 else []
+
+    # Not enough history → default STABLE
+    # We require at least 2 past reports (meaning 3 total reports including current)
+    if len(past_reports) < 2:
         return "STABLE", {
             "reason": "insufficient_history",
-            "report_count": len(historical),
+            "report_count": len(past_reports) + 1,
         }
 
-    # Score historical reports
+    # Score historical reports (average the past reports, up to 3)
     historical_scores = [
         _calculateSeverityScore(r)
-        for r in historical[:MIN_HISTORICAL_REPORTS]
+        for r in past_reports[:3]
     ]
 
     # Score current submission
-    current_score = SEVERITY_SCORE_MAP.get(currentSeverity.upper(), 0)
+    current_score = float(currentRiskScore)
 
     avg_historical = sum(historical_scores) / len(historical_scores)
     severity_change = current_score - avg_historical
 
     trend_details = {
-        "current_severity":       currentSeverity,
-        "current_score":          current_score,
+        "current_score":          round(current_score, 2),
         "avg_historical_score":   round(avg_historical, 2),
         "severity_change":        round(severity_change, 2),
-        "historical_scores":      historical_scores,
+        "historical_scores":      [round(s, 2) for s in historical_scores],
     }
 
-    # Thresholds — tuned to avoid noise for stable cases
-    IMPROVING_THRESHOLD = -0.5
-    WORSENING_THRESHOLD = 0.5
+    # Thresholds — tuned for riskScore which ranges ~ 0.0 to 15.0+
+    IMPROVING_THRESHOLD = -2.0
+    WORSENING_THRESHOLD = 2.0
 
-    if severity_change <= IMPROVING_THRESHOLD:
+    # Override 1: High-risk spike — any recent report >= 10.0 indicates an unstable patient
+    if any(score >= 10.0 for score in historical_scores):
+        trend_status = "WORSENING"
+        trend_details["override"] = "high_risk_spike"
+
+    # Override 2: Volatility — large swings in recent scores indicate an unstable condition
+    elif max(historical_scores) - min(historical_scores) > 5.0:
+        trend_status = "WORSENING"
+        trend_details["override"] = "volatility"
+
+    # Standard delta-based classification
+    elif severity_change <= IMPROVING_THRESHOLD:
         trend_status = "IMPROVING"
     elif severity_change >= WORSENING_THRESHOLD:
         trend_status = "WORSENING"

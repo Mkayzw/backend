@@ -4,10 +4,8 @@
   left: var(--sidebar-width);
   right: 0;
   height: var(--topbar-height);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--color-border-light);
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2EBF6;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -41,12 +39,13 @@
 
 .topbar__role-badge {
   padding: 5px 14px;
-  background: linear-gradient(135deg, rgba(27, 107, 147, 0.08), rgba(79, 192, 208, 0.08));
-  color: var(--color-blue);
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563EB;
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+  border: 1px solid rgba(37, 99, 235, 0.15);
 }
 
 .topbar__notif {
