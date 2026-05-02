@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     print("Database disconnected. Goodbye! 👋")
 
 # Create the main FastAPI app instance
-# You can customize the name, description, and version shown in your automatic documentation (/docs)
+
 app = FastAPI(
     title="Remote Patient Monitoring API",
     description="""
