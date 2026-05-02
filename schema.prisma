@@ -88,7 +88,6 @@ model Patient {
   id               Int       @id @default(autoincrement())
   userId           Int       @unique
   emergencyContact String
-  // Physical address (used for emergency dispatch when an alert is raised)
   address          String?
   dateOfBirth      DateTime
   gender           String
@@ -97,7 +96,7 @@ model Patient {
   // Clinical context — drives the intelligence layer
   chronicConditions String?  // JSON array: ["asthma", "diabetes"]
   allergies         String?  // JSON array: ["penicillin", "latex"]
-  baselineStatus    String?  // "stable" | "fragile" | "unknown"
+  baselineStatus    String?  // "stable" | "fragile" |" "unknown
 
   // Intelligence Layer — updated on each new symptom report
   currentRiskLevel   RiskLevel   @default(LOW)
@@ -145,9 +144,6 @@ model Assignment {
   patient   Patient   @relation(fields: [patientId], references: [id])
   clinician Clinician @relation(fields: [clinicianId], references: [id])
 
-  // No DB-level unique constraint — a patient can have multiple assignments
-  // over time (re-admission, different care contexts).
-  // Active-only uniqueness is enforced at the service layer.
   @@index([patientId, clinicianId])
 }
 
