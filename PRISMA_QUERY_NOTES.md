@@ -733,4 +733,4 @@ When writing a Prisma query, think:
 5. Do I need related rows in `include`?
 6. Do I need sorting or pagination?
 
-If you can answer those 6 questions, you can usually build the query quickly.
+
