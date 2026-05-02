@@ -95,6 +95,7 @@ async def getAlerts(
     priority: Optional[str] = None,
     isRead: Optional[bool] = None,
     limit: int = 50,
+    clinicianId: Optional[int] = None,
 ) -> List:
     """
     Retrieve alerts sorted by priority (HIGH first) then timestamp (newest first).
@@ -104,6 +105,12 @@ async def getAlerts(
         where["priority"] = priority
     if isRead is not None:
         where["isRead"] = isRead
+    if clinicianId is not None:
+        where["patient"] = {
+            "assignments": {
+                "some": {"clinicianId": clinicianId, "status": "ACTIVE"}
+            }
+        }
 
     alerts = await db.alert.find_many(
         where=where,
@@ -116,10 +123,16 @@ async def getAlerts(
 
     # Prisma sorts enums alphabetically. Sort in Python: HIGH → MEDIUM → LOW.
     priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-    sorted_alerts = sorted(
-        alerts,
-        key=lambda a: (priority_order.get(str(a.priority), 3), -a.createdAt.timestamp()),
-    )
+
+    def _sort_key(a):
+        p = priority_order.get(str(a.priority), 3)
+        try:
+            ts = a.createdAt.timestamp() if hasattr(a.createdAt, "timestamp") else 0
+        except (AttributeError, TypeError, ValueError):
+            ts = 0
+        return (p, -ts)
+
+    sorted_alerts = sorted(alerts, key=_sort_key)
 
     return sorted_alerts[:limit]
 

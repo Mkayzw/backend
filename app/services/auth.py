@@ -111,6 +111,18 @@ async def registerUser(
     - If CLINICIAN: requires specialization; auto-creates Clinician record
     - Returns user data with JWT token (auto-login after signup)
     """
+    # Validate password strength
+    if len(password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters long",
+        )
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must contain at least one letter and one number",
+        )
+
     # Check for duplicate email
     existing = await db.user.find_unique(where={"email": email})
     if existing:
@@ -118,7 +130,7 @@ async def registerUser(
             status_code=status.HTTP_409_CONFLICT,
             detail="A user with this email already exists",
         )
-    
+
     # Create user record
     user = await db.user.create(data={
         "email": email,

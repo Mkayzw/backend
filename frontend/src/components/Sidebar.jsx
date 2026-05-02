@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import {
   LayoutDashboard, FileHeart, Users, UserCog, Stethoscope,
   Link2, Bell, BarChart3, Activity, LogOut, Heart, ClipboardList,
@@ -33,6 +34,7 @@ const navItems = {
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
+  const { counts } = useNotifications();
   const items = navItems[user?.role] || [];
 
   return (
@@ -57,6 +59,9 @@ export default function Sidebar() {
           >
             <item.icon size={19} />
             <span>{item.label}</span>
+            {item.to.includes('alerts') && counts.unreadAlerts > 0 && (
+              <span className="sidebar__badge">{counts.unreadAlerts}</span>
+            )}
           </NavLink>
         ))}
       </nav>

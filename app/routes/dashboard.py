@@ -12,22 +12,22 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats", response_model=StatsResponse)
-async def getStats():
+async def getStats(current_user: dict = Depends(getCurrentUser)):
     """
     Get platform statistics.
     
     """
-    return await controller.getStats()
+    return await controller.getStats(current_user)
 
 
 @router.get("/recent-activity", response_model=RecentActivityResponse)
-async def getRecentActivity():
+async def getRecentActivity(current_user: dict = Depends(getCurrentUser)):
     """
     Get recent platform activity.
     
     
     """
-    return await controller.getRecentActivity()
+    return await controller.getRecentActivity(current_user)
 
 
 @router.get("/prioritized-patients")

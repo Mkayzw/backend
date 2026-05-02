@@ -17,16 +17,23 @@ export async function apiRequest(endpoint, options = {}) {
     headers,
   });
 
-  if (response.status === 401) {
-    localStorage.removeItem('rpm_token');
-    localStorage.removeItem('rpm_user');
-    window.location.href = '/login';
-    throw new Error('Unauthorized');
-  }
-
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    const error = await response.json().catch(() => ({ detail: `Request failed (${response.status})` }));
+    const message = error.detail || error.message || JSON.stringify(error) || `HTTP ${response.status}`;
+    const err = new Error(message);
+    err.status = response.status;
+    err.data = error;
+
+    if (response.status === 401) {
+      const isAuthEndpoint = endpoint.startsWith('/auth/login') || endpoint.startsWith('/auth/signup');
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('rpm_token');
+        localStorage.removeItem('rpm_user');
+        window.location.href = '/login';
+      }
+    }
+
+    throw err;
   }
 
   if (response.status === 204) return null;

@@ -193,3 +193,21 @@
 .login-link:hover {
   text-decoration: underline;
 }
+
+.field-error {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--color-danger);
+  font-weight: 500;
+}
+
+.login-input-wrap--error .login-input-icon {
+  color: var(--color-danger);
+}
+
+.input-error,
+.input-error:focus {
+  border-color: var(--color-danger) !important;
+  box-shadow: 0 0 0 3px rgba(235, 87, 87, 0.1) !important;
+}

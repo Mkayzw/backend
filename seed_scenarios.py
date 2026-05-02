@@ -12,7 +12,7 @@ Key properties:
   - alert generation with embedded reasoning
 
 Run:
-  python seed_defense_scenarios.py
+  python seed_scenarios.py
 """
 
 import asyncio

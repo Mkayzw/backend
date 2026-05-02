@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from app.schemas.clinician_schema import ClinicianResponse
+from app.schemas.patient_schema import PatientResponse
 
 VALID_CARE_CONTEXTS = {
     "ASTHMA_FOLLOWUP",
@@ -38,3 +39,4 @@ class AssignmentResponse(BaseModel):
     careContext: str
     reason:      Optional[str]     = None
     clinician:   Optional[ClinicianResponse] = None
+    patient:     Optional[PatientResponse] = None

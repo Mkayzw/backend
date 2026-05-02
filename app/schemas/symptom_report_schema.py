@@ -83,3 +83,8 @@ class SymptomReportResponse(BaseModel):
     riskScore:          float           = 0.0
     riskFactors:        Optional[str]   = None
     riskExplanation:    Optional[str]   = None
+    patient:            Optional['PatientResponse'] = None
+
+# Avoid circular imports by doing late binding
+from app.schemas.patient_schema import PatientResponse
+SymptomReportResponse.model_rebuild()

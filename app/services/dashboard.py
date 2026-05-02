@@ -11,24 +11,63 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 
-async def getStats() -> dict:
+async def getStats(clinicianId: Optional[int] = None) -> dict:
     """
     Platform statistics including urgency indicators.
     """
     now = datetime.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    total_users         = await db.user.count()
-    total_patients      = await db.patient.count()
-    total_clinicians    = await db.clinician.count()
-    total_assignments   = await db.assignment.count()
-    active_assignments  = await db.assignment.count(where={"status": "ACTIVE"})
-    unread_alerts       = await db.alert.count(where={"isRead": False})
-    high_risk_patients  = await db.patient.count(where={"currentRiskLevel": "HIGH"})
-    worsening_patients  = await db.patient.count(where={"currentTrendStatus": "WORSENING"})
-    reports_today       = await db.symptomreport.count(
-        where={"createdAt": {"gte": today_start}}
-    )
+    if clinicianId is not None:
+        patient_where = {
+            "assignments": {
+                "some": {"clinicianId": clinicianId, "status": "ACTIVE"}
+            }
+        }
+        total_users = 0 # Not relevant for clinician view typically, but keeping shape
+        total_clinicians = 1
+        total_patients = await db.patient.count(where=patient_where)
+        total_assignments = await db.assignment.count(where={"clinicianId": clinicianId})
+        active_assignments = await db.assignment.count(where={"clinicianId": clinicianId, "status": "ACTIVE"})
+        
+        unread_alerts = await db.alert.count(
+            where={
+                "isRead": False,
+                "patient": {
+                    "assignments": {
+                        "some": {"clinicianId": clinicianId, "status": "ACTIVE"}
+                    }
+                }
+            }
+        )
+        high_risk_patients = await db.patient.count(
+            where={"currentRiskLevel": "HIGH", **patient_where}
+        )
+        worsening_patients = await db.patient.count(
+            where={"currentTrendStatus": "WORSENING", **patient_where}
+        )
+        reports_today = await db.symptomreport.count(
+            where={
+                "createdAt": {"gte": today_start},
+                "patient": {
+                    "assignments": {
+                        "some": {"clinicianId": clinicianId, "status": "ACTIVE"}
+                    }
+                }
+            }
+        )
+    else:
+        total_users         = await db.user.count()
+        total_patients      = await db.patient.count()
+        total_clinicians    = await db.clinician.count()
+        total_assignments   = await db.assignment.count()
+        active_assignments  = await db.assignment.count(where={"status": "ACTIVE"})
+        unread_alerts       = await db.alert.count(where={"isRead": False})
+        high_risk_patients  = await db.patient.count(where={"currentRiskLevel": "HIGH"})
+        worsening_patients  = await db.patient.count(where={"currentTrendStatus": "WORSENING"})
+        reports_today       = await db.symptomreport.count(
+            where={"createdAt": {"gte": today_start}}
+        )
 
     return {
         "totalUsers":         total_users,
@@ -44,29 +83,56 @@ async def getStats() -> dict:
     }
 
 
-async def getRecentActivity() -> dict:
+async def getRecentActivity(clinicianId: Optional[int] = None) -> dict:
     """
     Recent platform activity for the admin overview panel.
     """
-    recent_reports = await db.symptomreport.find_many(
-        take=5,
-        order={"createdAt": "desc"},
-        include={"patient": {"include": {"user": True}}},
-    )
+    if clinicianId is not None:
+        patient_where = {
+            "patient": {
+                "assignments": {
+                    "some": {"clinicianId": clinicianId, "status": "ACTIVE"}
+                }
+            }
+        }
+        recent_reports = await db.symptomreport.find_many(
+            where=patient_where,
+            take=5,
+            order={"createdAt": "desc"},
+            include={"patient": {"include": {"user": True}}},
+        )
 
-    recent_assignments = await db.assignment.find_many(
-        take=5,
-        order={"assignedAt": "desc"},
-        include={
-            "patient":   {"include": {"user": True}},
-            "clinician": {"include": {"user": True}},
-        },
-    )
+        recent_assignments = await db.assignment.find_many(
+            where={"clinicianId": clinicianId},
+            take=5,
+            order={"assignedAt": "desc"},
+            include={
+                "patient":   {"include": {"user": True}},
+                "clinician": {"include": {"user": True}},
+            },
+        )
+        
+        recent_users = [] 
+    else:
+        recent_reports = await db.symptomreport.find_many(
+            take=5,
+            order={"createdAt": "desc"},
+            include={"patient": {"include": {"user": True}}},
+        )
 
-    recent_users = await db.user.find_many(
-        take=5,
-        order={"createdAt": "desc"},
-    )
+        recent_assignments = await db.assignment.find_many(
+            take=5,
+            order={"assignedAt": "desc"},
+            include={
+                "patient":   {"include": {"user": True}},
+                "clinician": {"include": {"user": True}},
+            },
+        )
+
+        recent_users = await db.user.find_many(
+            take=5,
+            order={"createdAt": "desc"},
+        )
 
     return {
         "recentSymptomReports": recent_reports,
@@ -98,18 +164,18 @@ async def getPrioritizedPatients(clinicianId: Optional[int] = None) -> list:
         include={
             "user": True,
             "symptomReports": {
-                "order": {"createdAt": "desc"},
+                "order_by": {"createdAt": "desc"},
                 "take": 1,
             },
             "assignments": {
                 "where": {"status": "ACTIVE"},
                 "take": 1,
-                "order": {"assignedAt": "desc"},
+                "order_by": {"assignedAt": "desc"},
                 "include": {"clinician": True},
             },
             "alerts": {
                 "where": {"isRead": False},
-                "order": {"createdAt": "desc"},
+                "order_by": {"createdAt": "desc"},
                 "take": 10,
             },
         },
@@ -148,13 +214,13 @@ async def getPatientTrendData(patientId: int) -> Optional[dict]:
         include={
             "user": True,
             "symptomReports": {
-                "order": {"createdAt": "desc"},
+                "order_by": {"createdAt": "desc"},
                 "take": 10,
             },
             "assignments": {
                 "where": {"status": "ACTIVE"},
                 "take": 1,
-                "order": {"assignedAt": "desc"},
+                "order_by": {"assignedAt": "desc"},
             },
         },
     )

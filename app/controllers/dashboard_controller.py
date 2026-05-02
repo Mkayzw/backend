@@ -9,21 +9,33 @@ from app.services import dashboard as dashboardService
 from app.services.auth import getCurrentUser, requireRole, checkDataAccess
 
 
-async def getStats():
+async def getStats(current_user: dict):
     """
     Get platform statistics.
     
 
     """
+    if current_user["role"] == "CLINICIAN":
+        from app.db import db
+        clinician = await db.clinician.find_unique(where={"userId": current_user["id"]})
+        if clinician:
+            return await dashboardService.getStats(clinicianId=clinician.id)
+
     return await dashboardService.getStats()
 
 
-async def getRecentActivity():
+async def getRecentActivity(current_user: dict):
     """
     Get recent platform activity.
     
    .5
     """
+    if current_user["role"] == "CLINICIAN":
+        from app.db import db
+        clinician = await db.clinician.find_unique(where={"userId": current_user["id"]})
+        if clinician:
+            return await dashboardService.getRecentActivity(clinicianId=clinician.id)
+
     return await dashboardService.getRecentActivity()
 
 

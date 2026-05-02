@@ -2,12 +2,15 @@
 Alert Schemas
 
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
+from app.schemas.patient_schema import PatientResponse
 
 
 class AlertResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: int
     patientId: int
     symptomReportId: int
@@ -16,9 +19,7 @@ class AlertResponse(BaseModel):
     message: str
     isRead: bool
     createdAt: datetime
-    
-    class Config:
-        from_attributes = True
+    patient: Optional[PatientResponse] = None
 
 
 class AlertListResponse(BaseModel):

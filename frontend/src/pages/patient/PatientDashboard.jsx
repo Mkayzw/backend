@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { dashboardAPI } from '../../api/dashboard';
 import { symptomReportsAPI } from '../../api/symptomReports';
 import { patientsAPI } from '../../api/patients';
@@ -37,6 +39,8 @@ const PATIENT_PATH_TO_TAB = Object.fromEntries(PATIENT_TABS.map(t => [t.path, t.
 
 export default function PatientDashboard() {
   const { user } = useAuth();
+  const { success, error: toastError } = useToast();
+  const { setUnreadAlerts } = useNotifications();
   const location = useLocation();
   const navigate = useNavigate();
   const [patient, setPatient] = useState(null);
@@ -76,10 +80,14 @@ export default function PatientDashboard() {
       let allAssignments = [];
       try {
         patientsData = await patientsAPI.getAll();
-      } catch (err) { console.error('Failed to load patients:', err); }
+      } catch (err) {
+        toastError('Failed to load patients: ' + (err.message || 'Unknown error'));
+      }
       try {
         allAssignments = await assignmentsAPI.getAll();
-      } catch (err) { console.error('Failed to load assignments:', err); }
+      } catch (err) {
+        toastError('Failed to load assignments: ' + (err.message || 'Unknown error'));
+      }
 
       const myPatient = patientsData.find(p => p.userId === user.id);
       setPatient(myPatient);
@@ -88,12 +96,14 @@ export default function PatientDashboard() {
         try {
           const myReports = await symptomReportsAPI.getByPatient(myPatient.id);
           setReports(myReports);
-        } catch (err) { console.error('Failed to load reports:', err); }
+        } catch (err) {
+          toastError('Failed to load reports: ' + (err.message || 'Unknown error'));
+        }
         const myAssignments = allAssignments.filter(a => a.patientId === myPatient.id && a.status === 'ACTIVE');
         setAssignments(myAssignments);
       }
     } catch (err) {
-      console.error('Failed to load patient data:', err);
+      toastError('Failed to load patient data: ' + (err.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -130,9 +140,10 @@ export default function PatientDashboard() {
         symptoms: [], severity: 'MILD', durationDays: 1, frequency: 'FIRST_TIME',
         notes: '', temperature: '', heartRate: '', medicationAdherent: null,
       });
+      success('Symptom report submitted successfully');
       loadData();
     } catch (err) {
-      alert('Failed to submit report: ' + err.message);
+      toastError('Failed to submit report: ' + (err.message || 'Unknown error'));
     } finally {
       setSubmitting(false);
     }

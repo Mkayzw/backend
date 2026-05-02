@@ -19,12 +19,19 @@ async def getAlertsList(
 ) -> List[dict]:
     """
     Get alerts with optional filtering.
-    
+
     Only CLINICIAN and ADMIN roles can access alerts.
-    
+
 
     """
-    alerts = await getAlerts(priority=priority, isRead=isRead, limit=limit)
+    clinicianId = None
+    if current_user and current_user.get("role") == "CLINICIAN":
+        from app.db import db
+        clinician = await db.clinician.find_unique(where={"userId": current_user["id"]})
+        if clinician:
+            clinicianId = clinician.id
+
+    alerts = await getAlerts(priority=priority, isRead=isRead, limit=limit, clinicianId=clinicianId)
     return alerts
 
 
@@ -34,8 +41,8 @@ async def markAlertRead(
 ) -> dict:
     """
     Mark an alert as read.
-    
-  
+
+
     """
     try:
         alert = await markAlertAsRead(alertId)
@@ -54,5 +61,14 @@ async def getPatientAlerts(
     """
     Get all alerts for a specific patient.
     """
+    if current_user:
+        from app.services.auth import checkDataAccess
+        has_access = await checkDataAccess(current_user, "patient", patientId)
+        if not has_access:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this patient's alerts"
+            )
+
     alerts = await getAlertsByPatient(patientId)
     return alerts

@@ -7,6 +7,8 @@ import { alertsAPI } from '../../api/alerts';
 import { metricsAPI } from '../../api/metrics';
 import { patientsAPI } from '../../api/patients';
 import { cliniciansAPI } from '../../api/clinicians';
+import { useToast } from '../../context/ToastContext';
+import { useNotifications } from '../../context/NotificationContext';
 import TopBar from '../../components/TopBar';
 import StatCard from '../../components/StatCard';
 import AlertCard from '../../components/AlertCard';
@@ -39,6 +41,8 @@ const PIE_COLORS = ['#27AE60', '#2D9CDB', '#9B51E0'];
 export default function AdminDashboard() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { success, error: toastError } = useToast();
+  const { setUnreadAlerts } = useNotifications();
   const [tab, setTab] = useState(() => PATH_TO_TAB[location.pathname] || 'overview');
 
   // Sync tab with URL changes (e.g. sidebar navigation)
@@ -70,6 +74,9 @@ export default function AdminDashboard() {
   const [showModal, setShowModal] = useState(false);
   const [aForm, setAForm] = useState({ patientId:'', clinicianId:'', careContext:'GENERAL_REVIEW', reason:'' });
   const [uFilter, setUFilter] = useState('ALL');
+  const [uSearch, setUSearch] = useState('');
+  const [pSearch, setPSearch] = useState('');
+  const [cSearch, setCSearch] = useState('');
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -78,52 +85,59 @@ export default function AdminDashboard() {
     try {
       const statsData = await dashboardAPI.getStats();
       setStats(statsData);
-    } catch(e) { console.error('Failed to load stats:', e); }
+    } catch(e) { toastError('Failed to load stats: ' + (e.message || 'Unknown error')); }
     try {
       const recentData = await dashboardAPI.getRecentActivity();
       setRecent(recentData);
-    } catch(e) { console.error('Failed to load recent activity:', e); }
+    } catch(e) { toastError('Failed to load recent activity: ' + (e.message || 'Unknown error')); }
     try {
       const usersData = await usersAPI.getAll();
       setUsers(usersData);
-    } catch(e) { console.error('Failed to load users:', e); }
+    } catch(e) { toastError('Failed to load users: ' + (e.message || 'Unknown error')); }
     try {
       const assignmentsData = await assignmentsAPI.getAll();
       setAssignments(assignmentsData);
-    } catch(e) { console.error('Failed to load assignments:', e); }
+    } catch(e) { toastError('Failed to load assignments: ' + (e.message || 'Unknown error')); }
     try {
       const alertsData = await alertsAPI.getAll({limit:100});
       setAlerts(alertsData);
-    } catch(e) { console.error('Failed to load alerts:', e); }
+      const unreadCount = (alertsData || []).filter(a => !a.isRead).length;
+      setUnreadAlerts(unreadCount);
+    } catch(e) { toastError('Failed to load alerts: ' + (e.message || 'Unknown error')); }
     try {
       const patientsData = await patientsAPI.getAll();
       setPatients(patientsData);
-    } catch(e) { console.error('Failed to load patients:', e); }
+    } catch(e) { toastError('Failed to load patients: ' + (e.message || 'Unknown error')); }
     try {
       const cliniciansData = await cliniciansAPI.getAll();
       setClinicians(cliniciansData);
-    } catch(e) { console.error('Failed to load clinicians:', e); }
+    } catch(e) { toastError('Failed to load clinicians: ' + (e.message || 'Unknown error')); }
     try {
       const [em,lm,rm] = await Promise.all([metricsAPI.getErrorRate(7),metricsAPI.getLatency(7),metricsAPI.getRiskAccuracy()]);
       setErrM(em); setLatM(lm); setRiskAcc(rm);
-    } catch(e) { console.error('Failed to load metrics:', e); }
+    } catch(e) { toastError('Failed to load metrics: ' + (e.message || 'Unknown error')); }
     setLoading(false);
   };
 
-  const delUser = async(id)=>{ if(!confirm('Delete this user?'))return; try{await usersAPI.delete(id);setUsers(p=>p.filter(u=>u.id!==id));}catch(e){alert(e.message);} };
-  const delAssign = async(id)=>{ if(!confirm('Delete?'))return; try{await assignmentsAPI.delete(id);setAssignments(p=>p.filter(a=>a.id!==id));}catch(e){alert(e.message);} };
-  const toggleAssign = async(id,st)=>{ try{await assignmentsAPI.updateStatus(id,st==='ACTIVE'?'INACTIVE':'ACTIVE');setAssignments(p=>p.map(a=>a.id===id?{...a,status:st==='ACTIVE'?'INACTIVE':'ACTIVE'}:a));}catch(e){alert(e.message);} };
-  const markRead = async(id)=>{ try{await alertsAPI.markRead(id);setAlerts(p=>p.map(a=>a.id===id?{...a,isRead:true}:a));}catch(e){console.error(e);} };
+  const delUser = async(id)=>{ if(!confirm('Delete this user?'))return; try{await usersAPI.delete(id);setUsers(p=>p.filter(u=>u.id!==id)); success('User deleted');}catch(e){toastError('Failed to delete user: ' + (e.message || 'Unknown error'));} };
+  const delAssign = async(id)=>{ if(!confirm('Delete?'))return; try{await assignmentsAPI.delete(id);setAssignments(p=>p.filter(a=>a.id!==id)); success('Assignment deleted');}catch(e){toastError('Failed to delete assignment: ' + (e.message || 'Unknown error'));} };
+  const toggleAssign = async(id,st)=>{ try{await assignmentsAPI.updateStatus(id,st==='ACTIVE'?'INACTIVE':'ACTIVE');setAssignments(p=>p.map(a=>a.id===id?{...a,status:st==='ACTIVE'?'INACTIVE':'ACTIVE'}:a)); success('Assignment status updated');}catch(e){toastError('Failed to update assignment: ' + (e.message || 'Unknown error'));} };
+  const markRead = async(id)=>{ try{await alertsAPI.markRead(id);setAlerts(p=>{const updated=p.map(a=>a.id===id?{...a,isRead:true}:a); setUnreadAlerts(updated.filter(a=>!a.isRead).length); return updated;}); success('Alert marked as read');}catch(e){toastError('Failed to mark alert read: ' + (e.message || 'Unknown error'));} };
 
   const createAssign = async(e)=>{
     e.preventDefault();
     try{
       await assignmentsAPI.create({patientId:parseInt(aForm.patientId),clinicianId:parseInt(aForm.clinicianId),careContext:aForm.careContext,reason:aForm.reason||null});
-      setShowModal(false); setAForm({patientId:'',clinicianId:'',careContext:'GENERAL_REVIEW',reason:''}); load();
-    }catch(e){alert(e.message);}
+      setShowModal(false); setAForm({patientId:'',clinicianId:'',careContext:'GENERAL_REVIEW',reason:''}); success('Assignment created'); load();
+    }catch(e){toastError('Failed to create assignment: ' + (e.message || 'Unknown error'));}
   };
 
-  const fUsers = uFilter==='ALL'?users:users.filter(u=>u.role===uFilter);
+  const fUsers = (uFilter==='ALL'?users:users.filter(u=>u.role===uFilter))
+    .filter(u => {
+      const term = uSearch.toLowerCase();
+      if (!term) return true;
+      return (u.fullname || u.fullName || '').toLowerCase().includes(term) || (u.email || '').toLowerCase().includes(term);
+    });
   const rc = {PATIENT:users.filter(u=>u.role==='PATIENT').length,CLINICIAN:users.filter(u=>u.role==='CLINICIAN').length,ADMIN:users.filter(u=>u.role==='ADMIN').length};
   const pieData = [{name:'Patients',value:rc.PATIENT},{name:'Clinicians',value:rc.CLINICIAN},{name:'Admins',value:rc.ADMIN}];
 
@@ -163,7 +177,7 @@ export default function AdminDashboard() {
               <div className="activity-feed">
                 {recent?.recentSymptomReports?.slice(0,5).map((r,i)=>(
                   <div key={r.id} className="activity-item animate-fade-in" style={{animationDelay:`${i*60}ms`}}>
-                    <div className="activity-dot activity-dot--report"/><div className="activity-content"><span className="activity-text">Symptom report submitted</span><span className="activity-meta">Patient #{r.patientId} — {r.severity} — Risk: {r.riskLevel}</span></div>
+                    <div className="activity-dot activity-dot--report"/><div className="activity-content"><span className="activity-text">Symptom report submitted</span><span className="activity-meta">{r.patient?.user?.fullname || r.patient?.user?.fullName || `Patient #${r.patientId}`} — {r.severity} — Risk: {r.riskLevel}</span></div>
                     <span className="activity-time">{new Date(r.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span>
                   </div>
                 ))}
@@ -180,7 +194,10 @@ export default function AdminDashboard() {
         {tab==='users' && (<div>
           <div className="flex-between mb-16">
             <div className="alert-filters">{['ALL','PATIENT','CLINICIAN','ADMIN'].map(f=><button key={f} className={`btn btn-sm ${uFilter===f?'btn-primary':'btn-secondary'}`} onClick={()=>setUFilter(f)}>{f} {f!=='ALL'&&`(${rc[f]||0})`}</button>)}</div>
-            <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={14}/> Refresh</button>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <input className="form-input" placeholder="Search users..." value={uSearch} onChange={e=>setUSearch(e.target.value)} style={{width:220}}/>
+              <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={14}/> Refresh</button>
+            </div>
           </div>
           <div className="card" style={{overflow:'hidden'}}><table className="admin-table"><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Phone</th><th>Actions</th></tr></thead>
             <tbody>{fUsers.map((u,i)=><tr key={u.id} className="animate-fade-in" style={{animationDelay:`${i*20}ms`}}>
@@ -194,8 +211,14 @@ export default function AdminDashboard() {
         {tab==='assignments' && (<div>
           <div className="flex-between mb-16"><span className="section-title" style={{margin:0}}>{assignments.length} Total Assignments</span><button className="btn btn-primary btn-sm" onClick={()=>setShowModal(true)}><Plus size={14}/> New Assignment</button></div>
           <div className="card" style={{overflow:'hidden'}}><table className="admin-table"><thead><tr><th>ID</th><th>Patient</th><th>Clinician</th><th>Context</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
-            <tbody>{assignments.map((a,i)=><tr key={a.id} className="animate-fade-in" style={{animationDelay:`${i*20}ms`}}>
-              <td className="table-id">{a.id}</td><td>Patient #{a.patientId}</td><td>Clinician #{a.clinicianId}</td>
+            <tbody>{assignments.map((a,i)=>{
+              const pData = a.patient || patients.find(p => p.id === a.patientId);
+              const pName = pData?.user?.fullname || pData?.user?.fullName || pData?.user?.email || `Patient #${a.patientId}`;
+              const cData = a.clinician || clinicians.find(c => c.id === a.clinicianId);
+              const cName = cData?.fullName || cData?.user?.fullname || cData?.user?.fullName || `Clinician #${a.clinicianId}`;
+              return (
+            <tr key={a.id} className="animate-fade-in" style={{animationDelay:`${i*20}ms`}}>
+              <td className="table-id">{a.id}</td><td>{pName}</td><td>{cName}</td>
               <td className="context-tag">{a.careContext?.replace(/_/g,' ')}</td>
               <td><span className={`badge ${a.status==='ACTIVE'?'badge-success':'badge-neutral'}`}>{a.status}</span></td>
               <td className="text-muted">{new Date(a.assignedAt).toLocaleDateString()}</td>
@@ -203,11 +226,11 @@ export default function AdminDashboard() {
                 <button className="btn btn-ghost btn-sm" onClick={()=>toggleAssign(a.id,a.status)}>{a.status==='ACTIVE'?<XCircle size={14} style={{color:'var(--color-warning)'}}/>:<CheckCircle2 size={14} style={{color:'var(--color-success)'}}/>}</button>
                 <button className="btn btn-ghost btn-sm" onClick={()=>delAssign(a.id)}><Trash2 size={14} style={{color:'var(--color-danger)'}}/></button>
               </div></td>
-            </tr>)}</tbody></table></div>
+            </tr>)})}</tbody></table></div>
           <Modal isOpen={showModal} onClose={()=>setShowModal(false)} title="Create Assignment" width={480}>
             <form onSubmit={createAssign} style={{display:'flex',flexDirection:'column',gap:16}}>
-              <div className="form-group"><label className="form-label">Patient</label><select className="form-select" value={aForm.patientId} onChange={e=>setAForm(f=>({...f,patientId:e.target.value}))} required><option value="">Select patient...</option>{patients.map(p=><option key={p.id} value={p.id}>#{p.id} — {p.user?.fullname||p.user?.fullName||`Patient ${p.id}`}</option>)}</select></div>
-              <div className="form-group"><label className="form-label">Clinician</label><select className="form-select" value={aForm.clinicianId} onChange={e=>setAForm(f=>({...f,clinicianId:e.target.value}))} required><option value="">Select clinician...</option>{clinicians.map(c=><option key={c.id} value={c.id}>#{c.id} — {c.fullName} ({c.specialization})</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Patient</label><input className="form-input" placeholder="Search patients..." value={pSearch} onChange={e=>setPSearch(e.target.value)} style={{marginBottom:8}}/><select className="form-select" value={aForm.patientId} onChange={e=>setAForm(f=>({...f,patientId:e.target.value}))} required><option value="">Select patient...</option>{patients.filter(p=>{const t=pSearch.toLowerCase();if(!t)return true;const n=(p.user?.fullname||p.user?.fullName||'').toLowerCase();const em=(p.user?.email||'').toLowerCase();return n.includes(t)||em.includes(t)||String(p.id).includes(t);}).map(p=><option key={p.id} value={p.id}>#{p.id} — {p.user?.fullname||p.user?.fullName||`Patient ${p.id}`}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Clinician</label><input className="form-input" placeholder="Search clinicians..." value={cSearch} onChange={e=>setCSearch(e.target.value)} style={{marginBottom:8}}/><select className="form-select" value={aForm.clinicianId} onChange={e=>setAForm(f=>({...f,clinicianId:e.target.value}))} required><option value="">Select clinician...</option>{clinicians.filter(c=>{const t=cSearch.toLowerCase();if(!t)return true;const n=(c.fullName||'').toLowerCase();const sp=(c.specialization||'').toLowerCase();return n.includes(t)||sp.includes(t)||String(c.id).includes(t);}).map(c=><option key={c.id} value={c.id}>#{c.id} — {c.fullName} ({c.specialization})</option>)}</select></div>
               <div className="form-group"><label className="form-label">Care Context</label><select className="form-select" value={aForm.careContext} onChange={e=>setAForm(f=>({...f,careContext:e.target.value}))}>{CARE_CONTEXTS.map(c=><option key={c} value={c}>{c.replace(/_/g,' ')}</option>)}</select></div>
               <div className="form-group"><label className="form-label">Reason</label><input className="form-input" placeholder="Optional reason" value={aForm.reason} onChange={e=>setAForm(f=>({...f,reason:e.target.value}))}/></div>
               <button type="submit" className="btn btn-primary" style={{width:'100%'}}><Plus size={16}/> Create</button>

@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authAPI } from '../api/auth';
+import { useToast } from './ToastContext';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+  const { error: toastError } = useToast();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -16,9 +18,12 @@ export function AuthProvider({ children }) {
     try {
       const userData = await authAPI.getMe();
       setUser(userData);
-    } catch {
+    } catch (err) {
       localStorage.removeItem('rpm_token');
       localStorage.removeItem('rpm_user');
+      if (err.message !== 'Unauthorized') {
+        toastError('Session check failed: ' + (err.message || 'Unknown error'));
+      }
     } finally {
       setLoading(false);
     }

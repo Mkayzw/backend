@@ -7,7 +7,7 @@ export const alertsAPI = {
     if (isRead !== undefined && isRead !== null) params.set('isRead', isRead);
     if (limit) params.set('limit', limit);
     const query = params.toString();
-    return api.get(`/alerts${query ? `?${query}` : ''}`);
+    return api.get(`/alerts/${query ? `?${query}` : ''}`);
   },
   markRead: (alertId) => api.put(`/alerts/${alertId}/read`),
   getByPatient: (patientId) => api.get(`/alerts/patient/${patientId}`),

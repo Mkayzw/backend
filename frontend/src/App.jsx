@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
+import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/Sidebar';
+import ToastContainer from './components/ToastContainer';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import PatientDashboard from './pages/patient/PatientDashboard';
@@ -78,9 +81,14 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <ToastProvider>
+        <NotificationProvider>
+          <AuthProvider>
+            <AppRoutes />
+            <ToastContainer />
+          </AuthProvider>
+        </NotificationProvider>
+      </ToastProvider>
     </BrowserRouter>
   );
 }

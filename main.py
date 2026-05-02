@@ -47,6 +47,15 @@ and track care relationships in low-resource settings.
     lifespan=lifespan
 )
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Add compression middleware for low-bandwidth optimization (
 app.add_middleware(CompressionMiddleware)
 

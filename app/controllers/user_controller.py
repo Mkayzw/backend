@@ -25,8 +25,8 @@ async def Login(loginData: LoginReq):
     return user
 
 #GET USER(S)
-async def getAllUsers():
-    return await userService.getAllUsers()
+async def getAllUsers(q: str | None = None, role: str | None = None):
+    return await userService.getAllUsers(q=q, role=role)
 
 async def getSingleUser(userId:int):
     user=await userService.getUserById(userId)

@@ -21,8 +21,8 @@ async def login(loginData:LoginReq):
 
   
 @router.get("/",response_model=List[UserResponse])
-async def getAllUsers():
-    return await userController.getAllUsers()
+async def getAllUsers(q: str = None, role: str = None):
+    return await userController.getAllUsers(q=q, role=role)
 
 @router.get("/{userId}",response_model=UserResponse)
 async def getUser(userId:int):

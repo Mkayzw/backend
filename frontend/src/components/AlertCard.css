@@ -80,6 +80,51 @@
   line-height: 1.5;
 }
 
+.alert-card__summary {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text);
+  line-height: 1.4;
+  margin: 0 0 8px 0;
+}
+
+.alert-card__factors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.factor-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--color-surface-alt);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-light);
+  white-space: nowrap;
+}
+
+.alert-card--high .factor-tag {
+  background: rgba(231, 76, 60, 0.08);
+  border-color: rgba(231, 76, 60, 0.2);
+  color: var(--color-danger);
+}
+
+.alert-card--medium .factor-tag {
+  background: rgba(243, 156, 18, 0.08);
+  border-color: rgba(243, 156, 18, 0.2);
+  color: var(--color-warning);
+}
+
+.alert-card--low .factor-tag {
+  background: rgba(52, 152, 219, 0.08);
+  border-color: rgba(52, 152, 219, 0.2);
+  color: var(--color-info);
+}
+
 .alert-card__action {
   flex-shrink: 0;
   margin-top: 2px;

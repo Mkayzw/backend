@@ -7,10 +7,21 @@ const priorityConfig = {
   LOW:    { icon: Info,           className: 'alert-card--low' },
 };
 
+function parseAlertMessage(message) {
+  if (!message) return { summary: '', factors: [] };
+  const [summary, reasoningLine] = message.split('\nReasoning:');
+  const factors = reasoningLine
+    ? reasoningLine.split(/\s*\|\s*/).map(s => s.trim()).filter(Boolean)
+    : [];
+  return { summary: summary.trim(), factors };
+}
+
 export default function AlertCard({ alert, onMarkRead }) {
   const config = priorityConfig[alert.priority] || priorityConfig.LOW;
   const Icon = config.icon;
   const time = new Date(alert.createdAt).toLocaleString();
+  const patientName = alert.patient?.user?.fullname || alert.patient?.user?.fullName || `Patient #${alert.patientId}`;
+  const { summary, factors } = parseAlertMessage(alert.message);
 
   return (
     <div className={`alert-card ${config.className} ${alert.isRead ? 'alert-card--read' : ''}`}>
@@ -22,10 +33,17 @@ export default function AlertCard({ alert, onMarkRead }) {
           <span className={`badge ${alert.priority === 'HIGH' ? 'badge-danger' : alert.priority === 'MEDIUM' ? 'badge-warning' : 'badge-info'}`}>
             {alert.priority}
           </span>
-          <span className="alert-card__type">{alert.alertType?.replace(/_/g, ' ')}</span>
+          <span className="alert-card__type">{alert.alertType?.replace(/_/g, ' ')} for {patientName}</span>
           <span className="alert-card__time">{time}</span>
         </div>
-        <p className="alert-card__message">{alert.message}</p>
+        {summary && <p className="alert-card__summary">{summary}</p>}
+        {factors.length > 0 && (
+          <div className="alert-card__factors">
+            {factors.map((f, i) => (
+              <span key={i} className="factor-tag">{f}</span>
+            ))}
+          </div>
+        )}
       </div>
       {!alert.isRead && onMarkRead && (
         <button className="btn btn-ghost btn-sm alert-card__action" onClick={() => onMarkRead(alert.id)} title="Mark as read">

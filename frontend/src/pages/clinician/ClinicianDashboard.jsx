@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { dashboardAPI } from '../../api/dashboard';
 import { alertsAPI } from '../../api/alerts';
 import TopBar from '../../components/TopBar';
@@ -30,6 +32,8 @@ const CLINICIAN_PATH_TO_TAB = Object.fromEntries(CLINICIAN_TABS.map(t => [t.path
 
 export default function ClinicianDashboard() {
   const { user } = useAuth();
+  const { success, error: toastError } = useToast();
+  const { setUnreadAlerts } = useNotifications();
   const location = useLocation();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
@@ -65,15 +69,17 @@ export default function ClinicianDashboard() {
     try {
       const statsData = await dashboardAPI.getStats();
       setStats(statsData);
-    } catch (err) { console.error('Failed to load stats:', err); }
+    } catch (err) { toastError('Failed to load stats: ' + (err.message || 'Unknown error')); }
     try {
       const patientsData = await dashboardAPI.getPrioritizedPatients();
       setPatients(patientsData);
-    } catch (err) { console.error('Failed to load patients:', err); }
+    } catch (err) { toastError('Failed to load patients: ' + (err.message || 'Unknown error')); }
     try {
       const alertsData = await alertsAPI.getAll({ limit: 50 });
       setAlerts(alertsData);
-    } catch (err) { console.error('Failed to load alerts:', err); }
+      const unreadCount = (alertsData || []).filter(a => !a.isRead).length;
+      setUnreadAlerts(unreadCount);
+    } catch (err) { toastError('Failed to load alerts: ' + (err.message || 'Unknown error')); }
     setLoading(false);
   };
 
@@ -89,7 +95,7 @@ export default function ClinicianDashboard() {
       const data = await dashboardAPI.getPatientTrend(patientId);
       setTrendData(data);
     } catch (err) {
-      console.error('Failed to load trend:', err);
+      toastError('Failed to load trend: ' + (err.message || 'Unknown error'));
     } finally {
       setTrendLoading(false);
     }
@@ -98,9 +104,14 @@ export default function ClinicianDashboard() {
   const handleMarkRead = async (alertId) => {
     try {
       await alertsAPI.markRead(alertId);
-      setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, isRead: true } : a));
+      setAlerts(prev => {
+        const updated = prev.map(a => a.id === alertId ? { ...a, isRead: true } : a);
+        setUnreadAlerts(updated.filter(a => !a.isRead).length);
+        return updated;
+      });
+      success('Alert marked as read');
     } catch (err) {
-      console.error('Failed to mark alert read:', err);
+      toastError('Failed to mark alert read: ' + (err.message || 'Unknown error'));
     }
   };
 

@@ -26,8 +26,16 @@ async def getUserById(userId: int):
     return await db.user.find_unique(where={"id": userId})
 async def getUserByEmail(email:str):
     return await db.user.find_unique(where={"email":email})
-async def getAllUsers():
-    return await db.user.find_many(order={"createdAt":"desc"})
+async def getAllUsers(q: str | None = None, role: str | None = None):
+    where_clause = {}
+    if role:
+        where_clause["role"] = role.upper()
+    if q:
+        where_clause["OR"] = [
+            {"email": {"contains": q}},
+            {"fullName": {"contains": q}},
+        ]
+    return await db.user.find_many(where=where_clause, order={"createdAt": "desc"})
 
 #create user
 async def createUser(
