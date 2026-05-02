@@ -56,7 +56,7 @@ backend/
 ├── app/
 │   ├── config/          # Configuration/Environment files (.env setups)
 │   ├── controllers/     # Orchestrates HTTP requests, calls Services, handles HTTP Exceptions
-│   ├── models/          # Used if you use raw SQLAlchemy/Pydantic combos, optional with Prisma
+│  
 │   ├── routes/          # API endpoint URL definitions (think: the steering wheel)
 │   ├── schemas/         # Data validation using Pydantic classes
 │   ├── services/        # Pure Business Logic and Database Interactions (the engine)
