@@ -7,6 +7,7 @@ import { alertsAPI } from '../../api/alerts';
 import { metricsAPI } from '../../api/metrics';
 import { patientsAPI } from '../../api/patients';
 import { cliniciansAPI } from '../../api/clinicians';
+import { auditAPI } from '../../api/audit';
 import { useToast } from '../../context/ToastContext';
 import { useNotifications } from '../../context/NotificationContext';
 import TopBar from '../../components/TopBar';
@@ -14,10 +15,12 @@ import StatCard from '../../components/StatCard';
 import AlertCard from '../../components/AlertCard';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import PushAlertsButton from '../../components/PushAlertsButton';
+import { startRealtimeStream } from '../../realtime/sse';
 import {
   Users, UserCheck, Stethoscope, Link2, Bell, ShieldAlert, TrendingDown,
   FileHeart, BarChart3, Activity, Trash2, Plus, RefreshCw,
-  Clock, AlertTriangle, Zap, Target, CheckCircle2, XCircle, UserCog
+  Clock, AlertTriangle, Zap, Target, CheckCircle2, XCircle, UserCog, History
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import './AdminDashboard.css';
@@ -27,6 +30,7 @@ const TABS = [
   { key: 'users', label: 'Users', icon: UserCog, path: '/admin/users' },
   { key: 'assignments', label: 'Assignments', icon: Link2, path: '/admin/assignments' },
   { key: 'alerts', label: 'Alerts', icon: Bell, path: '/admin/alerts' },
+  { key: 'audit', label: 'Audit Trail', icon: History, path: '/admin/audit' },
   { key: 'metrics', label: 'System Metrics', icon: BarChart3, path: '/admin/metrics' },
 ];
 
@@ -43,20 +47,11 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { success, error: toastError } = useToast();
   const { setUnreadAlerts } = useNotifications();
-  const [tab, setTab] = useState(() => PATH_TO_TAB[location.pathname] || 'overview');
-
-  // Sync tab with URL changes (e.g. sidebar navigation)
-  useEffect(() => {
-    const urlTab = PATH_TO_TAB[location.pathname];
-    if (urlTab) {
-      setTab(urlTab);
-    }
-  }, [location.pathname]);
+  const tab = PATH_TO_TAB[location.pathname] || 'overview';
 
   const handleTabChange = (tabKey) => {
     const tabDef = TABS.find(t => t.key === tabKey);
     if (tabDef) {
-      setTab(tabKey);
       navigate(tabDef.path, { replace: true });
     }
   };
@@ -70,6 +65,7 @@ export default function AdminDashboard() {
   const [errM, setErrM] = useState(null);
   const [latM, setLatM] = useState(null);
   const [riskAcc, setRiskAcc] = useState(null);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [aForm, setAForm] = useState({ patientId:'', clinicianId:'', careContext:'GENERAL_REVIEW', reason:'' });
@@ -77,10 +73,41 @@ export default function AdminDashboard() {
   const [uSearch, setUSearch] = useState('');
   const [pSearch, setPSearch] = useState('');
   const [cSearch, setCSearch] = useState('');
+  const [auditResourceFilter, setAuditResourceFilter] = useState('ALL');
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const load = async () => {
+  useEffect(() => {
+    const token = localStorage.getItem('rpm_token');
+    if (!token) return;
+
+    const stream = startRealtimeStream({
+      token,
+      onEvent: (evt) => {
+        if (evt?.event !== 'alert.created') return;
+        const incoming = evt?.data;
+        if (!incoming?.id) return;
+
+        setAlerts(prev => {
+          const exists = prev.some(a => a.id === incoming.id);
+          if (exists) return prev;
+          const updated = [incoming, ...prev].slice(0, 100);
+          const unreadCount = updated.filter(a => !a.isRead).length;
+          setUnreadAlerts(unreadCount);
+          setStats(s => s ? ({ ...s, unreadAlerts: unreadCount }) : s);
+          if (incoming.priority === 'HIGH') success('New HIGH RISK alert received');
+          return updated;
+        });
+      },
+      onError: (e) => {
+        console.warn('Realtime stream error', e);
+      }
+    });
+
+    return () => stream.stop();
+  }, [setUnreadAlerts, success]);
+
+  async function load() {
     setLoading(true);
     try {
       const statsData = await dashboardAPI.getStats();
@@ -116,8 +143,12 @@ export default function AdminDashboard() {
       const [em,lm,rm] = await Promise.all([metricsAPI.getErrorRate(7),metricsAPI.getLatency(7),metricsAPI.getRiskAccuracy()]);
       setErrM(em); setLatM(lm); setRiskAcc(rm);
     } catch(e) { toastError('Failed to load metrics: ' + (e.message || 'Unknown error')); }
+    try {
+      const auditData = await auditAPI.getLogs({ limit: 100 });
+      setAuditLogs(auditData);
+    } catch(e) { toastError('Failed to load audit logs: ' + (e.message || 'Unknown error')); }
     setLoading(false);
-  };
+  }
 
   const delUser = async(id)=>{ if(!confirm('Delete this user?'))return; try{await usersAPI.delete(id);setUsers(p=>p.filter(u=>u.id!==id)); success('User deleted');}catch(e){toastError('Failed to delete user: ' + (e.message || 'Unknown error'));} };
   const delAssign = async(id)=>{ if(!confirm('Delete?'))return; try{await assignmentsAPI.delete(id);setAssignments(p=>p.filter(a=>a.id!==id)); success('Assignment deleted');}catch(e){toastError('Failed to delete assignment: ' + (e.message || 'Unknown error'));} };
@@ -140,6 +171,10 @@ export default function AdminDashboard() {
     });
   const rc = {PATIENT:users.filter(u=>u.role==='PATIENT').length,CLINICIAN:users.filter(u=>u.role==='CLINICIAN').length,ADMIN:users.filter(u=>u.role==='ADMIN').length};
   const pieData = [{name:'Patients',value:rc.PATIENT},{name:'Clinicians',value:rc.CLINICIAN},{name:'Admins',value:rc.ADMIN}];
+  const auditResourceTypes = ['ALL', ...Array.from(new Set(auditLogs.map(l => l.resourceType).filter(Boolean)))];
+  const filteredAuditLogs = auditResourceFilter === 'ALL'
+    ? auditLogs
+    : auditLogs.filter(l => l.resourceType === auditResourceFilter);
 
   if(loading) return(<><TopBar title="Admin Console" subtitle="System administration"/><div className="page-content flex-center" style={{height:'60vh'}}><LoadingSpinner/></div></>);
 
@@ -147,6 +182,9 @@ export default function AdminDashboard() {
     <>
       <TopBar title="Admin Console" subtitle="System-wide monitoring & management" />
       <div className="page-content">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <PushAlertsButton />
+        </div>
         <div className="tabs">
           {TABS.map(t=><button key={t.key} className={`tab ${tab===t.key?'active':''}`} onClick={()=>handleTabChange(t.key)}><t.icon size={15} style={{marginRight:6,verticalAlign:'middle'}}/> {t.label}</button>)}
         </div>
@@ -239,6 +277,32 @@ export default function AdminDashboard() {
         </div>)}
 
         {tab==='alerts' && (<div className="alerts-list">{alerts.length>0?alerts.map(a=><AlertCard key={a.id} alert={a} onMarkRead={markRead}/>):<div className="empty-state"><Bell size={36} className="empty-state-icon"/><p>No alerts</p></div>}</div>)}
+
+        {tab==='audit' && (<div>
+          <div className="flex-between mb-16">
+            <span className="section-title" style={{margin:0}}>System Audit Trail</span>
+            <div style={{display:'flex',gap:8,alignItems:'center'}}>
+              <select className="form-select" value={auditResourceFilter} onChange={e=>setAuditResourceFilter(e.target.value)} style={{width:190}}>
+                {auditResourceTypes.map(type => <option key={type} value={type}>{type === 'ALL' ? 'All resources' : type.replace(/_/g, ' ')}</option>)}
+              </select>
+              <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={14}/> Refresh</button>
+            </div>
+          </div>
+          <div className="card" style={{overflow:'hidden'}}>
+            <table className="admin-table">
+              <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Resource</th><th>Status</th><th>IP</th></tr></thead>
+              <tbody>{filteredAuditLogs.map((log,i)=><tr key={log.id} className="animate-fade-in" style={{animationDelay:`${i*15}ms`}}>
+                <td className="text-muted">{new Date(log.createdAt).toLocaleString()}</td>
+                <td>{log.actor?.fullname || log.actor?.fullName || (log.actorUserId ? `User #${log.actorUserId}` : 'Anonymous')}<div className="text-muted" style={{fontSize:'0.75rem'}}>{log.actorRole || 'N/A'}</div></td>
+                <td><span className="badge badge-info">{log.action.replace(/_/g,' ')}</span><div className="text-muted" style={{fontSize:'0.75rem'}}>{log.method} {log.path}</div></td>
+                <td>{log.resourceType?.replace(/_/g,' ') || 'resource'}{log.resourceId && <div className="text-muted" style={{fontSize:'0.75rem'}}>ID: {log.resourceId}</div>}</td>
+                <td><span className={`badge ${log.statusCode >= 400 ? 'badge-danger' : 'badge-success'}`}>{log.statusCode}</span></td>
+                <td className="text-muted">{log.ipAddress || '—'}</td>
+              </tr>)}</tbody>
+            </table>
+            {filteredAuditLogs.length === 0 && <div className="empty-state"><History size={36} className="empty-state-icon"/><p>No audit events recorded yet</p></div>}
+          </div>
+        </div>)}
 
         {tab==='metrics' && (<div>
           <div className="admin-grid">

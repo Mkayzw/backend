@@ -56,6 +56,19 @@ async def getStats(clinicianId: Optional[int] = None) -> dict:
                 }
             }
         )
+        open_tasks = await db.task.count(
+            where={
+                "assignedClinicianId": clinicianId,
+                "status": {"in": ["OPEN", "IN_PROGRESS"]},
+            }
+        )
+        overdue_tasks = await db.task.count(
+            where={
+                "assignedClinicianId": clinicianId,
+                "status": {"in": ["OPEN", "IN_PROGRESS"]},
+                "dueAt": {"lt": now},
+            }
+        )
     else:
         total_users         = await db.user.count()
         total_patients      = await db.patient.count()
@@ -67,6 +80,10 @@ async def getStats(clinicianId: Optional[int] = None) -> dict:
         worsening_patients  = await db.patient.count(where={"currentTrendStatus": "WORSENING"})
         reports_today       = await db.symptomreport.count(
             where={"createdAt": {"gte": today_start}}
+        )
+        open_tasks          = await db.task.count(where={"status": {"in": ["OPEN", "IN_PROGRESS"]}})
+        overdue_tasks       = await db.task.count(
+            where={"status": {"in": ["OPEN", "IN_PROGRESS"]}, "dueAt": {"lt": now}}
         )
 
     return {
@@ -80,6 +97,8 @@ async def getStats(clinicianId: Optional[int] = None) -> dict:
         "highRiskPatients":   high_risk_patients,
         "worseningPatients":  worsening_patients,
         "reportsToday":       reports_today,
+        "openTasks":          open_tasks,
+        "overdueTasks":       overdue_tasks,
     }
 
 

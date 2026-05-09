@@ -11,6 +11,7 @@ from app.db import db
 # Import middleware
 from app.utils.compression import CompressionMiddleware
 from app.services.metrics import MetricsMiddleware
+from app.utils.audit_middleware import AuditMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,6 +63,9 @@ app.add_middleware(CompressionMiddleware)
 # Add metrics middleware for automatic request timing 
 app.add_middleware(MetricsMiddleware)
 
+# Add audit middleware for mutating actions
+app.add_middleware(AuditMiddleware)
+
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,8 @@ async def health_check():
 # So, we use "Routers" to split endpoints into different files (look in `app/routes/`).
 from app.routes import health, users, patients, clinicians, assignments, symptom_reports, dashboard
 from app.routes import alerts, metrics, auth
+from app.routes import push, realtime, tasks
+from app.routes import audit
 
 # Core routes
 app.include_router(health.router)
@@ -100,6 +106,10 @@ app.include_router(dashboard.router)
 app.include_router(alerts.router)
 app.include_router(metrics.router)
 app.include_router(auth.router)
+app.include_router(push.router)
+app.include_router(realtime.router)
+app.include_router(audit.router)
+app.include_router(tasks.router)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,8 @@ import json
 from datetime import datetime
 from typing import Optional, List
 
+from fastapi import HTTPException, status
+
 from app.db import db
 from app.services.risk_classification import classifySymptomReport
 from app.services.trend_analysis import analyzeTrend
@@ -51,8 +53,14 @@ async def createSymptomReport(
         where={"patientId": patientId, "status": "ACTIVE"},
         order={"assignedAt": "desc"},
     )
+    if not active_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Patient must have an active clinician assignment before submitting a symptom report.",
+        )
+
     care_context: str = "GENERAL_REVIEW"
-    if active_assignment and active_assignment.careContext:
+    if active_assignment.careContext:
         care_context = str(active_assignment.careContext)
 
     # 3. Create the report with default LOW risk (will be updated below)

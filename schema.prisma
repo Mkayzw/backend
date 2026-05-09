@@ -42,6 +42,28 @@ enum AlertPriority {
   HIGH
 }
 
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  ESCALATED
+  SNOOZED
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum Severity {
   MILD
   MODERATE
@@ -78,6 +100,9 @@ model User {
 
   patient   Patient?
   clinician Clinician?
+  pushSubscriptions PushSubscription[]
+  auditLogs AuditLog[]
+  alertActions Alert[] @relation("AlertLastActor")
 }
 
 // ─────────────────────────────────────────────
@@ -109,6 +134,7 @@ model Patient {
   assignments    Assignment[]
   symptomReports SymptomReport[]
   alerts         Alert[]
+  tasks          Task[]
 }
 
 // ─────────────────────────────────────────────
@@ -121,8 +147,10 @@ model Clinician {
   fullName       String // Fixed: was `fullname`
   specialization String
 
-  user        User         @relation(fields: [userId], references: [id])
-  assignments Assignment[]
+  user             User         @relation(fields: [userId], references: [id])
+  assignments      Assignment[]
+  alertAssignments Alert[]      @relation("AlertAssignee")
+  tasks            Task[]
 }
 
 // ─────────────────────────────────────────────
@@ -181,17 +209,99 @@ model SymptomReport {
 // ─────────────────────────────────────────────
 
 model Alert {
-  id              Int           @id @default(autoincrement())
-  patientId       Int
-  symptomReportId Int
-  priority        AlertPriority
-  alertType       String        // "HIGH_RISK" | "WORSENING_TREND"
-  message         String        // Includes riskExplanation when available
-  isRead          Boolean       @default(false)
-  createdAt       DateTime      @default(now())
+  id                    Int           @id @default(autoincrement())
+  patientId             Int
+  symptomReportId       Int
+  priority              AlertPriority
+  alertType             String        // "HIGH_RISK" | "WORSENING_TREND"
+  message               String        // Includes riskExplanation when available
+  isRead                Boolean       @default(false)
+  status                AlertStatus   @default(NEW)
+  assignedToClinicianId Int?
+  resolutionNote        String?
+  resolvedAt            DateTime?
+  snoozedUntil          DateTime?
+  lastActionAt          DateTime?
+  lastActionByUserId    Int?
+  createdAt             DateTime      @default(now())
 
-  patient       Patient       @relation(fields: [patientId], references: [id])
-  symptomReport SymptomReport @relation(fields: [symptomReportId], references: [id])
+  patient             Patient       @relation(fields: [patientId], references: [id])
+  symptomReport       SymptomReport @relation(fields: [symptomReportId], references: [id])
+  assignedToClinician Clinician?    @relation("AlertAssignee", fields: [assignedToClinicianId], references: [id])
+  lastActionBy        User?         @relation("AlertLastActor", fields: [lastActionByUserId], references: [id])
+  tasks               Task[]
+
+  @@index([status])
+  @@index([assignedToClinicianId])
+}
+
+model Task {
+  id                  Int          @id @default(autoincrement())
+  patientId           Int
+  assignedClinicianId Int
+  createdFromAlertId  Int?
+  title               String
+  description         String?
+  dueAt               DateTime?
+  status              TaskStatus   @default(OPEN)
+  priority            TaskPriority @default(MEDIUM)
+  completedAt         DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  patient            Patient   @relation(fields: [patientId], references: [id])
+  assignedClinician  Clinician @relation(fields: [assignedClinicianId], references: [id])
+  createdFromAlert   Alert?    @relation(fields: [createdFromAlertId], references: [id])
+
+  @@index([patientId])
+  @@index([assignedClinicianId])
+  @@index([status])
+  @@index([dueAt])
+}
+
+// ─────────────────────────────────────────────
+//  Push Subscription (Web Push)
+// ─────────────────────────────────────────────
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+//  Audit Log
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  actorUserId  Int?
+  actorRole    String?
+  action       String
+  method       String
+  path         String
+  resourceType String?
+  resourceId   String?
+  statusCode   Int
+  ipAddress    String?
+  userAgent    String?
+  metadata     String?
+  createdAt    DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────

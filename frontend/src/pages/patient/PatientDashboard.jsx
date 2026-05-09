@@ -51,7 +51,7 @@ export default function PatientDashboard() {
   const [reports, setReports] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(() => PATIENT_PATH_TO_TAB[location.pathname] || 'dashboard');
+  const activeTab = PATIENT_PATH_TO_TAB[location.pathname] || 'dashboard';
   const [showReportModal, setShowReportModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [reportForm, setReportForm] = useState({
@@ -68,16 +68,7 @@ export default function PatientDashboard() {
     baselineStatus: 'stable'
   });
 
-  // Sync tab with URL changes (e.g. sidebar navigation)
-  useEffect(() => {
-    const urlTab = PATIENT_PATH_TO_TAB[location.pathname];
-    if (urlTab) {
-      setActiveTab(urlTab);
-    }
-  }, [location.pathname]);
-
   const handleTabChange = (tabKey) => {
-    setActiveTab(tabKey);
     const tabPath = tabKey === 'dashboard' ? '/patient' : `/patient/${tabKey}`;
     navigate(tabPath, { replace: true });
   };
@@ -86,7 +77,7 @@ export default function PatientDashboard() {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  async function loadData() {
     setLoading(true);
     try {
       let patientsData = [];
@@ -134,7 +125,7 @@ export default function PatientDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const toggleSymptom = (symptom) => {
     setReportForm(f => ({

@@ -5,20 +5,22 @@ import { useToast } from '../../context/ToastContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { dashboardAPI } from '../../api/dashboard';
 import { alertsAPI } from '../../api/alerts';
+import { tasksAPI } from '../../api/tasks';
 import TopBar from '../../components/TopBar';
 import StatCard from '../../components/StatCard';
 import RiskBadge from '../../components/RiskBadge';
 import TrendIndicator from '../../components/TrendIndicator';
 import AlertCard from '../../components/AlertCard';
-import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import PushAlertsButton from '../../components/PushAlertsButton';
+import { startRealtimeStream } from '../../realtime/sse';
 import {
   ShieldAlert, TrendingDown, Bell, FileHeart, Users, Activity,
-  ChevronDown, ChevronUp, Calendar, Stethoscope, Clock, Info
+  ChevronDown, ChevronUp, Clock, Info, ClipboardList, CheckCircle2, TimerReset
 } from 'lucide-react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import './ClinicianDashboard.css';
 
@@ -26,6 +28,7 @@ const CLINICIAN_TABS = [
   { key: 'patients', path: '/clinician' },
   { key: 'patients', path: '/clinician/patients' },
   { key: 'alerts', path: '/clinician/alerts' },
+  { key: 'tasks', path: '/clinician/tasks' },
   { key: 'trends', path: '/clinician/trends' },
 ];
 const CLINICIAN_PATH_TO_TAB = Object.fromEntries(CLINICIAN_TABS.map(t => [t.path, t.key]));
@@ -39,23 +42,16 @@ export default function ClinicianDashboard() {
   const [stats, setStats] = useState(null);
   const [patients, setPatients] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState(() => CLINICIAN_PATH_TO_TAB[location.pathname] || 'patients');
+  const activeTab = CLINICIAN_PATH_TO_TAB[location.pathname] || 'patients';
   const [expandedPatient, setExpandedPatient] = useState(null);
   const [trendData, setTrendData] = useState(null);
   const [trendLoading, setTrendLoading] = useState(false);
   const [alertFilter, setAlertFilter] = useState('all');
-
-  // Sync tab with URL changes (e.g. sidebar navigation)
-  useEffect(() => {
-    const urlTab = CLINICIAN_PATH_TO_TAB[location.pathname];
-    if (urlTab) {
-      setActiveTab(urlTab);
-    }
-  }, [location.pathname]);
+  const [taskFilter, setTaskFilter] = useState('all');
 
   const handleTabChange = (tabKey) => {
-    setActiveTab(tabKey);
     const tabPath = tabKey === 'patients' ? '/clinician' : `/clinician/${tabKey}`;
     navigate(tabPath, { replace: true });
   };
@@ -64,7 +60,41 @@ export default function ClinicianDashboard() {
     loadData();
   }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
+    const token = localStorage.getItem('rpm_token');
+    if (!token) return;
+
+    const stream = startRealtimeStream({
+      token,
+      onEvent: (evt) => {
+        const incoming = evt?.data;
+        if (!incoming?.id) return;
+
+        setAlerts((prev) => {
+          const updated = evt?.event === 'alert.updated'
+            ? prev.map((item) => (item.id === incoming.id ? incoming : item))
+            : prev.some((item) => item.id === incoming.id)
+              ? prev
+              : [incoming, ...prev].slice(0, 50);
+          const unreadCount = updated.filter((item) => !item.isRead).length;
+          setUnreadAlerts(unreadCount);
+          setStats((current) => current ? ({ ...current, unreadAlerts: unreadCount }) : current);
+          if (evt?.event === 'alert.created' && incoming.priority === 'HIGH') {
+            success('New HIGH RISK alert received');
+          }
+          return updated;
+        });
+      },
+      onError: (e) => {
+        // Keep quiet unless debugging; realtime is best-effort.
+        console.warn('Realtime stream error', e);
+      }
+    });
+
+    return () => stream.stop();
+  }, [setUnreadAlerts, success]);
+
+  async function loadData() {
     setLoading(true);
     try {
       const statsData = await dashboardAPI.getStats();
@@ -80,8 +110,12 @@ export default function ClinicianDashboard() {
       const unreadCount = (alertsData || []).filter(a => !a.isRead).length;
       setUnreadAlerts(unreadCount);
     } catch (err) { toastError('Failed to load alerts: ' + (err.message || 'Unknown error')); }
+    try {
+      const tasksData = await tasksAPI.getAll();
+      setTasks(tasksData);
+    } catch (err) { toastError('Failed to load tasks: ' + (err.message || 'Unknown error')); }
     setLoading(false);
-  };
+  }
 
   const loadTrend = async (patientId) => {
     if (expandedPatient === patientId) {
@@ -101,25 +135,120 @@ export default function ClinicianDashboard() {
     }
   };
 
-  const handleMarkRead = async (alertId) => {
+  const replaceAlert = (updatedAlert) => {
+    setAlerts((prev) => {
+      const exists = prev.some((item) => item.id === updatedAlert.id);
+      const next = exists
+        ? prev.map((item) => (item.id === updatedAlert.id ? updatedAlert : item))
+        : [updatedAlert, ...prev];
+      const unreadCount = next.filter((item) => !item.isRead).length;
+      setUnreadAlerts(unreadCount);
+      setStats((current) => current ? ({ ...current, unreadAlerts: unreadCount }) : current);
+      return next;
+    });
+  };
+
+  const syncTaskStats = (nextTasks) => {
+    const now = new Date();
+    const openTasks = nextTasks.filter((task) => ['OPEN', 'IN_PROGRESS'].includes(task.status)).length;
+    const overdueTasks = nextTasks.filter((task) => ['OPEN', 'IN_PROGRESS'].includes(task.status) && task.dueAt && new Date(task.dueAt) < now).length;
+    setStats((current) => current ? ({ ...current, openTasks, overdueTasks }) : current);
+  };
+
+  const handleAlertAction = async (alert, action) => {
     try {
-      await alertsAPI.markRead(alertId);
-      setAlerts(prev => {
-        const updated = prev.map(a => a.id === alertId ? { ...a, isRead: true } : a);
-        setUnreadAlerts(updated.filter(a => !a.isRead).length);
-        return updated;
-      });
-      success('Alert marked as read');
+      const payload = { action };
+
+      if (action === 'ADD_NOTE' || action === 'RESOLVE' || action === 'ESCALATE') {
+        const note = window.prompt(
+          action === 'RESOLVE' ? 'Enter resolution note' : 'Enter clinician note',
+          alert.resolutionNote || ''
+        );
+        if (note === null) return;
+        payload.resolutionNote = note;
+      }
+
+      if (action === 'SNOOZE') {
+        const hours = window.prompt('Snooze for how many hours?', '4');
+        if (hours === null) return;
+        const hoursNumber = Number(hours);
+        if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) {
+          toastError('Enter a valid number of hours');
+          return;
+        }
+        payload.snoozedUntil = new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString();
+      }
+
+      const updatedAlert = await alertsAPI.triage(alert.id, payload);
+      replaceAlert(updatedAlert);
+      success(`Alert ${action.toLowerCase().replace('_', ' ')} complete`);
     } catch (err) {
-      toastError('Failed to mark alert read: ' + (err.message || 'Unknown error'));
+      toastError('Failed to update alert: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const handleCreateTask = async (alert) => {
+    const title = window.prompt('Task title', `Follow up on ${alert.alertType?.replace(/_/g, ' ').toLowerCase()}`);
+    if (title === null || !title.trim()) return;
+
+    const description = window.prompt('Optional task description', alert.resolutionNote || '') || '';
+    const hours = window.prompt('Due in how many hours?', '24');
+    if (hours === null) return;
+    const hoursNumber = Number(hours);
+    const dueAt = Number.isFinite(hoursNumber) && hoursNumber > 0
+      ? new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString()
+      : null;
+
+    try {
+      const createdTask = await tasksAPI.create({
+        createdFromAlertId: alert.id,
+        title: title.trim(),
+        description: description.trim() || null,
+        dueAt,
+      });
+      setTasks((prev) => {
+        const nextTasks = [createdTask, ...prev];
+        syncTaskStats(nextTasks);
+        return nextTasks;
+      });
+      success('Follow-up task created');
+    } catch (err) {
+      toastError('Failed to create task: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  const handleTaskUpdate = async (taskId, status) => {
+    try {
+      const updatedTask = await tasksAPI.update(taskId, { status });
+      setTasks((prev) => {
+        const nextTasks = prev.map((task) => (task.id === taskId ? updatedTask : task));
+        syncTaskStats(nextTasks);
+        return nextTasks;
+      });
+      success('Task updated');
+    } catch (err) {
+      toastError('Failed to update task: ' + (err.message || 'Unknown error'));
     }
   };
 
   const formatSymptom = (s) => s.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-  const filteredAlerts = alertFilter === 'all' ? alerts
-    : alertFilter === 'unread' ? alerts.filter(a => !a.isRead)
-    : alerts.filter(a => a.priority === alertFilter);
+  const filteredAlerts = alerts.filter((alert) => {
+    if (alertFilter === 'all') return true;
+    if (alertFilter === 'new') return alert.status === 'NEW';
+    if (alertFilter === 'mine') return alert.assignedToClinician?.userId === user?.id;
+    if (alertFilter === 'escalated') return alert.status === 'ESCALATED';
+    if (alertFilter === 'resolved') return alert.status === 'RESOLVED';
+    return true;
+  });
+
+  const filteredTasks = tasks.filter((task) => {
+    if (taskFilter === 'all') return true;
+    if (taskFilter === 'overdue') {
+      return ['OPEN', 'IN_PROGRESS'].includes(task.status) && task.dueAt && new Date(task.dueAt) < new Date();
+    }
+    return task.status === taskFilter;
+  });
 
   const trendChartData = trendData?.recentReports
     ? [...trendData.recentReports]
@@ -146,12 +275,17 @@ export default function ClinicianDashboard() {
     <>
       <TopBar title="Clinical Dashboard" subtitle={`Dr. ${user?.fullName || 'Clinician'} — Patient Monitoring`} />
       <div className="page-content">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <PushAlertsButton />
+        </div>
         {/* Stats */}
         <div className="stats-grid stagger-children">
           <StatCard icon={ShieldAlert} label="High Risk Patients" value={stats?.highRiskPatients || 0} color="red" delay={0} />
           <StatCard icon={TrendingDown} label="Worsening Trends" value={stats?.worseningPatients || 0} color="amber" delay={80} />
           <StatCard icon={Bell} label="Unread Alerts" value={stats?.unreadAlerts || 0} color="blue" delay={160} />
           <StatCard icon={FileHeart} label="Reports Today" value={stats?.reportsToday || 0} color="teal" delay={240} />
+          <StatCard icon={ClipboardList} label="Open Tasks" value={stats?.openTasks || 0} color="blue" delay={320} />
+          <StatCard icon={TimerReset} label="Overdue Tasks" value={stats?.overdueTasks || 0} color="amber" delay={400} />
         </div>
 
         {/* Tabs */}
@@ -163,6 +297,12 @@ export default function ClinicianDashboard() {
             <Bell size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Alerts
             {alerts.filter(a => !a.isRead).length > 0 && (
               <span className="tab-badge">{alerts.filter(a => !a.isRead).length}</span>
+            )}
+          </button>
+          <button className={`tab ${activeTab === 'tasks' ? 'active' : ''}`} onClick={() => handleTabChange('tasks')}>
+            <ClipboardList size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Tasks
+            {tasks.filter((task) => ['OPEN', 'IN_PROGRESS'].includes(task.status)).length > 0 && (
+              <span className="tab-badge">{tasks.filter((task) => ['OPEN', 'IN_PROGRESS'].includes(task.status)).length}</span>
             )}
           </button>
           <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => handleTabChange('trends')}>
@@ -474,19 +614,85 @@ export default function ClinicianDashboard() {
         {activeTab === 'alerts' && (
           <div>
             <div className="alert-filters mb-16">
-              {['all', 'unread', 'HIGH', 'MEDIUM', 'LOW'].map(f => (
+              {['all', 'new', 'mine', 'escalated', 'resolved'].map(f => (
                 <button key={f} className={`btn btn-sm ${alertFilter === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setAlertFilter(f)}>
-                  {f === 'all' ? 'All' : f === 'unread' ? 'Unread' : f}
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </button>
               ))}
             </div>
             <div className="alerts-list">
               {filteredAlerts.length > 0 ? filteredAlerts.map(a => (
-                <AlertCard key={a.id} alert={a} onMarkRead={handleMarkRead} />
+                <AlertCard key={a.id} alert={a} onAction={handleAlertAction} onCreateTask={handleCreateTask} />
               )) : (
                 <div className="empty-state">
                   <Bell size={36} className="empty-state-icon" />
                   <p>No alerts matching filter</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tasks Tab */}
+        {activeTab === 'tasks' && (
+          <div>
+            <div className="alert-filters mb-16">
+              {['all', 'OPEN', 'IN_PROGRESS', 'DONE', 'overdue'].map((filter) => (
+                <button
+                  key={filter}
+                  className={`btn btn-sm ${taskFilter === filter ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setTaskFilter(filter)}
+                >
+                  {filter === 'all' ? 'All' : filter === 'overdue' ? 'Overdue' : filter.replace(/_/g, ' ')}
+                </button>
+              ))}
+            </div>
+            <div className="task-list">
+              {filteredTasks.length > 0 ? filteredTasks.map((task) => {
+                const patientName = task.patient?.user?.fullname || task.patient?.user?.fullName || `Patient #${task.patientId}`;
+                const isOverdue = ['OPEN', 'IN_PROGRESS'].includes(task.status) && task.dueAt && new Date(task.dueAt) < new Date();
+                return (
+                  <div key={task.id} className={`task-card ${isOverdue ? 'task-card--overdue' : ''}`}>
+                    <div className="task-card__header">
+                      <div>
+                        <h4>{task.title}</h4>
+                        <p>{patientName}</p>
+                      </div>
+                      <div className="task-card__badges">
+                        <span className={`badge ${task.priority === 'HIGH' ? 'badge-danger' : task.priority === 'MEDIUM' ? 'badge-warning' : 'badge-info'}`}>
+                          {task.priority}
+                        </span>
+                        <span className="badge badge-secondary">{task.status.replace(/_/g, ' ')}</span>
+                      </div>
+                    </div>
+                    <div className="task-card__meta">
+                      <span><Clock size={14} /> Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : 'No deadline'}</span>
+                      {task.createdFromAlertId && <span><Bell size={14} /> From alert #{task.createdFromAlertId}</span>}
+                    </div>
+                    {task.description && <p className="task-card__description">{task.description}</p>}
+                    <div className="task-card__actions">
+                      {task.status === 'OPEN' && (
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleTaskUpdate(task.id, 'IN_PROGRESS')}>
+                          <ClipboardList size={14} /> Start
+                        </button>
+                      )}
+                      {task.status !== 'DONE' && (
+                        <button className="btn btn-sm btn-primary" onClick={() => handleTaskUpdate(task.id, 'DONE')}>
+                          <CheckCircle2 size={14} /> Complete
+                        </button>
+                      )}
+                      {task.status === 'DONE' && (
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleTaskUpdate(task.id, 'OPEN')}>
+                          <TimerReset size={14} /> Reopen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="empty-state">
+                  <ClipboardList size={36} className="empty-state-icon" />
+                  <p>No tasks matching filter</p>
                 </div>
               )}
             </div>

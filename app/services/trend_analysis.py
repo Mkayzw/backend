@@ -10,10 +10,11 @@ Design decisions:
   - Uses the highly granular `riskScore` (0.0 to 15.0+) computed by the intelligence pipeline.
   - Requires at least 3 total reports (1 current + 2 past) before making a trend call (returns STABLE otherwise).
   - Calculates the baseline by averaging up to the 3 most recent *past* reports (strictly excluding the current report from the baseline).
-  - Rule overrides (applied before the delta threshold):
-      1. High-risk spike override: if any past report had a riskScore >= 10.0, the patient is WORSENING.
-      2. Volatility override: if the spread between the highest and lowest past scores > 5.0, the patient is WORSENING.
-  - If no override applies, triggers IMPROVING or WORSENING if the delta exceeds +/- 2.0; otherwise STABLE.
+  - A clear drop from the recent baseline is classified as IMPROVING even if
+    the recent history included a high-risk spike.
+  - If no improvement is detected, recent high-risk spikes or large score swings
+    are treated as WORSENING/unstable.
+  - Otherwise, triggers WORSENING if the delta exceeds +2.0; else STABLE.
 """
 from app.db import db
 from datetime import datetime
@@ -88,8 +89,12 @@ async def analyzeTrend(patientId: int, currentRiskScore: float) -> Tuple[str, di
     IMPROVING_THRESHOLD = -2.0
     WORSENING_THRESHOLD = 2.0
 
+    # Clear recovery should not be hidden by an earlier spike.
+    if severity_change <= IMPROVING_THRESHOLD:
+        trend_status = "IMPROVING"
+
     # Override 1: High-risk spike — any recent report >= 10.0 indicates an unstable patient
-    if any(score >= 10.0 for score in historical_scores):
+    elif any(score >= 10.0 for score in historical_scores):
         trend_status = "WORSENING"
         trend_details["override"] = "high_risk_spike"
 
@@ -99,8 +104,6 @@ async def analyzeTrend(patientId: int, currentRiskScore: float) -> Tuple[str, di
         trend_details["override"] = "volatility"
 
     # Standard delta-based classification
-    elif severity_change <= IMPROVING_THRESHOLD:
-        trend_status = "IMPROVING"
     elif severity_change >= WORSENING_THRESHOLD:
         trend_status = "WORSENING"
     else:

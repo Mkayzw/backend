@@ -15,6 +15,8 @@ class StatsResponse(BaseModel):
     highRiskPatients:  int
     worseningPatients: int
     reportsToday:      int
+    openTasks:         int = 0
+    overdueTasks:      int = 0
 
 
 class RecentActivityResponse(BaseModel):
