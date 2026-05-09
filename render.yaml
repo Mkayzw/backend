@@ -13,9 +13,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.12
       - key: DATABASE_URL
-        fromDatabase:
-          name: backend-db
-          property: connectionString
+        value: "postgresql://neondb_owner:npg_a4kGsqHPjIF3@ep-shiny-lab-am6fenvk-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
       - key: JWT_SECRET_KEY
         value: "d492aa0d8cbd8d50dd561819d869880ab677b306d7834d3bd35c57b8e9e2dbcf"
       - key: ENVIRONMENT
@@ -29,12 +27,4 @@ services:
     startCommand: cd frontend && npm install && npx serve -s dist -l $PORT
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: backend-api
-          property: url
-
-databases:
-  - name: backend-db
-    databaseName: healthcare_platform
-    user: healthcare_user
+        value: "https://backend-api.onrender.com"
