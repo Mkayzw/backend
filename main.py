@@ -13,17 +13,21 @@ from app.utils.compression import CompressionMiddleware
 from app.services.metrics import MetricsMiddleware
 from app.utils.audit_middleware import AuditMiddleware
 
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-   
-    await db.connect()
-    print("Database connected successfully! 🚀")
-    
+    try:
+        await db.connect()
+        print("Database connected successfully! ")
+    except Exception as e:
+        logger.exception(f"Database connection failed: {e}")
+        raise
+
     yield 
-    
   
     await db.disconnect()
-    print("Database disconnected. Goodbye! 👋")
+    print("Database disconnected. Goodbye! ")
 
 # Create the main FastAPI app instance
 
@@ -65,9 +69,6 @@ app.add_middleware(MetricsMiddleware)
 
 # Add audit middleware for mutating actions
 app.add_middleware(AuditMiddleware)
-
-
-logger = logging.getLogger(__name__)
 
 
 @app.exception_handler(Exception)
