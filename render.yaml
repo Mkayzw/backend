@@ -1,4 +1,5 @@
 services:
+  # Backend API
   - type: web
     name: backend-api
     env: python
@@ -16,9 +17,22 @@ services:
           name: backend-db
           property: connectionString
       - key: JWT_SECRET_KEY
-        generate: true
+        value: "d492aa0d8cbd8d50dd561819d869880ab677b306d7834d3bd35c57b8e9e2dbcf"
       - key: ENVIRONMENT
         value: production
+
+  # Frontend (React + Vite)
+  - type: web
+    name: frontend
+    env: node
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm install && npx serve -s dist -l $PORT
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: backend-api
+          property: url
 
 databases:
   - name: backend-db
