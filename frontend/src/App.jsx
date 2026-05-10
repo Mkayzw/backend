@@ -82,12 +82,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <NotificationProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <NotificationProvider>
             <AppRoutes />
             <ToastContainer />
-          </AuthProvider>
-        </NotificationProvider>
+          </NotificationProvider>
+        </AuthProvider>
       </ToastProvider>
     </BrowserRouter>
   );

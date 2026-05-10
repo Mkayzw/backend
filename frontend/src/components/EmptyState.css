@@ -1,0 +1,47 @@
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  text-align: center;
+  animation: fadeInUp 0.5s var(--ease-out);
+}
+
+.empty-state__icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface-alt);
+  border-radius: var(--radius-xl);
+  color: var(--color-text-muted);
+  margin-bottom: 20px;
+  animation: scaleIn 0.5s var(--ease-spring) 0.1s both;
+}
+
+.empty-state__icon svg {
+  opacity: 0.5;
+}
+
+.empty-state__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
+  animation: fadeInUp 0.5s var(--ease-out) 0.2s both;
+}
+
+.empty-state__description {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  max-width: 400px;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  animation: fadeInUp 0.5s var(--ease-out) 0.3s both;
+}
+
+.empty-state__action {
+  animation: fadeInUp 0.5s var(--ease-out) 0.4s both;
+}

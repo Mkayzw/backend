@@ -228,18 +228,27 @@ async def getPrioritizedPatients(clinicianId: Optional[int] = None) -> list:
         risk  = str(patient.currentRiskLevel)  if patient.currentRiskLevel  else "LOW"
         trend = str(patient.currentTrendStatus) if patient.currentTrendStatus else "STABLE"
 
-        # Use lastReportTime if set, else fall back to first report in loaded list
+        # Use lastReportTime if set, else fall back to first report in loaded list.
+        # Avoid datetime.min — on Windows, .timestamp() on pre-1970 datetimes
+        # raises OSError [Errno 22]. Use a numeric sentinel instead.
+        last_time = None
         if patient.lastReportTime:
             last_time = patient.lastReportTime
         elif patient.symptomReports:
             last_time = patient.symptomReports[0].createdAt
+
+        if last_time is None:
+            last_ts = 0.0  # patients with no reports sort last (most-recent first)
         else:
-            last_time = datetime.min
+            try:
+                last_ts = last_time.timestamp()
+            except (OSError, OverflowError, ValueError):
+                last_ts = 0.0
 
         return (
             risk_order.get(risk, 3),
             trend_order.get(trend, 3),
-            -last_time.timestamp(),
+            -last_ts,
         )
 
     return sorted(patients, key=sort_key)

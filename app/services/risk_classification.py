@@ -23,13 +23,18 @@ from app.db import db
 #  Symptom identifier → base weight
 # ─────────────────────────────────────────────
 SYMPTOM_WEIGHTS: dict[str, float] = {
-    # Critical (weight 3.0)
-    "chest_pain":            3.0,
-    "difficulty_breathing":  3.0,
-    "shortness_of_breath":   3.0,
-    "severe_bleeding":       3.0,
-    "unconscious":           3.0,
-    "stroke_symptoms":       3.0,
+    # Critical (weight 3.0) — life-threatening, immediate escalation
+    "chest_pain":               3.0,
+    "difficulty_breathing":     3.0,
+    "shortness_of_breath":      3.0,
+    "severe_bleeding":          3.0,
+    "unconscious":              3.0,
+    "stroke_symptoms":          3.0,
+    "seizure":                  3.0,
+    "severe_allergic_reaction": 3.0,
+    "suicidal_ideation":        3.0,
+    "severe_dehydration":       3.0,
+    "blue_lips_or_face":        3.0,
     # High (weight 2.0)
     "high_fever":            2.0,
     "persistent_vomiting":   2.0,
@@ -37,11 +42,24 @@ SYMPTOM_WEIGHTS: dict[str, float] = {
     "confusion":             2.0,
     "fainting":              2.0,
     "rapid_heartbeat":       2.0,
+    "severe_headache":       2.0,
+    "blood_in_stool":        2.0,
+    "blood_in_urine":        2.0,
+    "coughing_blood":        2.0,
+    "vomiting_blood":        2.0,
+    "jaundice":              2.0,
+    "vision_loss":           2.0,
+    "slurred_speech":        2.0,
+    "severe_diarrhea":       2.0,
+    "low_blood_sugar":       2.0,
+    "high_blood_pressure":   2.0,
     # Moderate (weight 1.0)
     "fever":                 1.0,
     "cough":                 1.0,
     "headache":              1.0,
     "nausea":                1.0,
+    "vomiting":              1.0,
+    "diarrhea":              1.0,
     "dizziness":             1.0,
     "fatigue":               1.0,
     "back_pain":             1.0,
@@ -50,6 +68,27 @@ SYMPTOM_WEIGHTS: dict[str, float] = {
     "muscle_weakness":       1.0,
     "swelling":              1.0,
     "rash":                  1.0,
+    "sore_throat":           1.0,
+    "ear_pain":              1.0,
+    "chills":                1.0,
+    "night_sweats":          1.0,
+    "weight_loss":           1.0,
+    "loss_of_appetite":      1.0,
+    "numbness":              1.0,
+    "tingling":              1.0,
+    "burning_urination":     1.0,
+    "frequent_urination":    1.0,
+    "constipation":          1.0,
+    "bloating":              1.0,
+    "anxiety":               1.0,
+    "depression":            1.0,
+    "insomnia":              1.0,
+    "palpitations":          1.0,
+    "runny_nose":            0.5,
+    "sneezing":              0.5,
+    # Special
+    "general_note":          0.0,
+    "escalation_request":    2.5,
 }
 
 
@@ -72,7 +111,7 @@ FREQUENCY_SCORES: dict[str, float] = {
 
 CARE_CONTEXT_BONUSES: dict[str, dict] = {
     "ASTHMA_FOLLOWUP": {
-        "matching_symptoms": ["difficulty_breathing", "shortness_of_breath", "chest_pain", "cough"],
+        "matching_symptoms": ["difficulty_breathing", "shortness_of_breath", "chest_pain", "cough", "blue_lips_or_face"],
         "bonus":    1.5,
         "baseline": 0.0,
     },
@@ -87,9 +126,49 @@ CARE_CONTEXT_BONUSES: dict[str, dict] = {
         "baseline": 0.5,
     },
     "INFECTION_FOLLOWUP": {
-        "matching_symptoms": ["high_fever", "fever", "persistent_vomiting", "confusion"],
+        "matching_symptoms": ["high_fever", "fever", "persistent_vomiting", "confusion", "chills", "night_sweats"],
         "bonus":    1.0,
         "baseline": 0.0,
+    },
+    "CARDIAC_FOLLOWUP": {
+        "matching_symptoms": ["chest_pain", "shortness_of_breath", "rapid_heartbeat", "palpitations", "fainting", "swelling"],
+        "bonus":    1.5,
+        "baseline": 0.5,
+    },
+    "DIABETES_MANAGEMENT": {
+        "matching_symptoms": ["confusion", "dizziness", "fatigue", "low_blood_sugar", "frequent_urination", "vision_loss", "numbness"],
+        "bonus":    1.0,
+        "baseline": 0.5,
+    },
+    "HYPERTENSION_MONITORING": {
+        "matching_symptoms": ["headache", "severe_headache", "chest_pain", "dizziness", "vision_loss", "high_blood_pressure", "slurred_speech"],
+        "bonus":    1.5,
+        "baseline": 0.5,
+    },
+    "MATERNAL_CARE": {
+        "matching_symptoms": ["severe_bleeding", "severe_headache", "swelling", "abdominal_pain", "high_blood_pressure", "vision_loss"],
+        "bonus":    2.0,
+        "baseline": 0.5,
+    },
+    "MENTAL_HEALTH_FOLLOWUP": {
+        "matching_symptoms": ["suicidal_ideation", "depression", "anxiety", "insomnia"],
+        "bonus":    2.0,
+        "baseline": 0.0,
+    },
+    "PEDIATRIC_FOLLOWUP": {
+        "matching_symptoms": ["high_fever", "persistent_vomiting", "severe_dehydration", "difficulty_breathing", "seizure"],
+        "bonus":    1.5,
+        "baseline": 0.5,
+    },
+    "ONCOLOGY_FOLLOWUP": {
+        "matching_symptoms": ["high_fever", "fever", "severe_pain", "weight_loss", "fatigue", "vomiting_blood", "coughing_blood"],
+        "bonus":    1.5,
+        "baseline": 0.5,
+    },
+    "RENAL_FOLLOWUP": {
+        "matching_symptoms": ["swelling", "blood_in_urine", "frequent_urination", "burning_urination", "fatigue", "high_blood_pressure"],
+        "bonus":    1.5,
+        "baseline": 0.5,
     },
     "GENERAL_REVIEW": {
         "matching_symptoms": [],
@@ -102,12 +181,18 @@ CARE_CONTEXT_BONUSES: dict[str, dict] = {
 #  Chronic condition → relevant symptoms
 # ─────────────────────────────────────────────
 CONDITION_SYMPTOM_RELEVANCE: dict[str, list] = {
-    "asthma":        ["difficulty_breathing", "shortness_of_breath", "cough", "chest_pain"],
-    "copd":          ["cough", "difficulty_breathing", "shortness_of_breath"],
-    "diabetes":      ["fatigue", "confusion", "nausea", "dizziness"],
-    "hypertension":  ["chest_pain", "headache", "rapid_heartbeat", "dizziness"],
-    "heart_disease": ["chest_pain", "shortness_of_breath", "rapid_heartbeat", "fainting"],
-    "epilepsy":      ["unconscious", "confusion", "fainting"],
+    "asthma":               ["difficulty_breathing", "shortness_of_breath", "cough", "chest_pain", "blue_lips_or_face"],
+    "copd":                 ["cough", "difficulty_breathing", "shortness_of_breath", "coughing_blood"],
+    "diabetes":             ["fatigue", "confusion", "nausea", "dizziness", "low_blood_sugar", "frequent_urination", "vision_loss", "numbness"],
+    "hypertension":         ["chest_pain", "headache", "severe_headache", "rapid_heartbeat", "dizziness", "high_blood_pressure", "vision_loss"],
+    "heart_disease":        ["chest_pain", "shortness_of_breath", "rapid_heartbeat", "fainting", "palpitations", "swelling"],
+    "epilepsy":             ["unconscious", "confusion", "fainting", "seizure"],
+    "chronic_kidney_disease": ["swelling", "blood_in_urine", "fatigue", "frequent_urination", "burning_urination"],
+    "cancer":               ["weight_loss", "fatigue", "severe_pain", "fever", "high_fever", "vomiting_blood", "coughing_blood", "blood_in_stool"],
+    "pregnancy":            ["severe_bleeding", "severe_headache", "swelling", "abdominal_pain", "high_blood_pressure", "vision_loss"],
+    "immunocompromised":    ["fever", "high_fever", "chills", "persistent_vomiting", "severe_diarrhea"],
+    "mental_health":        ["suicidal_ideation", "depression", "anxiety", "insomnia"],
+    "stroke_history":       ["slurred_speech", "numbness", "vision_loss", "confusion", "stroke_symptoms"],
 }
 
 # ─────────────────────────────────────────────
@@ -118,6 +203,47 @@ RISK_THRESHOLDS = {"HIGH": 5.0, "MEDIUM": 2.5}
 # ─────────────────────────────────────────────
 #  Internal helpers
 # ─────────────────────────────────────────────
+
+def _scoreAge(age: Optional[int], symptoms: List[str]) -> Tuple[float, List[str]]:
+    """Age-based risk modifier.
+
+    Both extremes of life carry higher physiologic vulnerability.
+    Returns (score, flags).
+    """
+    if age is None:
+        return 0.0, []
+
+    score = 0.0
+    flags: List[str] = []
+
+    if age < 1:
+        score += 1.5
+        flags.append(f"infant ({age}y)")
+    elif age < 5:
+        score += 1.0
+        flags.append(f"young child ({age}y)")
+    elif age >= 75:
+        score += 1.5
+        flags.append(f"frail elderly ({age}y)")
+    elif age >= 65:
+        score += 1.0
+        flags.append(f"elderly ({age}y)")
+
+    # Age × symptom interaction bonuses
+    elderly = age >= 65
+    pediatric = age < 5
+    elderly_red_flags = {"chest_pain", "confusion", "fainting", "shortness_of_breath", "fall", "slurred_speech"}
+    pediatric_red_flags = {"high_fever", "persistent_vomiting", "severe_dehydration", "difficulty_breathing", "seizure", "blue_lips_or_face"}
+
+    if elderly and any(s in elderly_red_flags for s in symptoms):
+        score += 0.5
+        flags.append("elderly with red-flag symptom")
+    if pediatric and any(s in pediatric_red_flags for s in symptoms):
+        score += 0.5
+        flags.append("pediatric red-flag symptom")
+
+    return score, flags
+
 
 def _scoreDuration(durationDays: int) -> float:
     if durationDays >= 14:
@@ -162,6 +288,7 @@ def _buildRiskExplanation(
     medicationAdherent: Optional[bool],
     chronicConditions: List[str],
     vitalFlags: List[str],
+    ageFlags: List[str],
     riskLevel: str,
 ) -> str:
     """
@@ -193,6 +320,7 @@ def _buildRiskExplanation(
     if medicationAdherent is False:
         parts.append("Non-adherent to medication")
 
+    parts.extend(ageFlags)
     parts.extend(vitalFlags)
 
     parts.append(f"→ {riskLevel} RISK")
@@ -227,6 +355,7 @@ async def computeRiskScore(
     medicationAdherent: Optional[bool] = None,
     careContext: Optional[str] = None,
     chronicConditions: Optional[List[str]] = None,
+    patientAge: Optional[int] = None,
 ) -> Tuple[float, dict]:
     """
     Compute a risk score from structured clinical inputs.
@@ -273,6 +402,13 @@ async def computeRiskScore(
     factors["vital_score"] = vital_score
     factors["vital_flags"] = vital_flags
     total += vital_score
+
+    # 6b. Age (extremes of life are higher risk)
+    age_score, age_flags = _scoreAge(patientAge, symptoms)
+    factors["age_score"] = age_score
+    factors["age_flags"] = age_flags
+    factors["patient_age"] = patientAge
+    total += age_score
 
     # 7. Care context (baseline + symptom match bonus)
     context_key = careContext or "GENERAL_REVIEW"
@@ -330,6 +466,7 @@ async def classifySymptomReport(
     medicationAdherent: Optional[bool] = None,
     careContext: Optional[str] = None,
     chronicConditions: Optional[List[str]] = None,
+    patientAge: Optional[int] = None,
 ) -> Tuple[str, float, str, str]:
     """
     Main entry point for risk classification.
@@ -350,11 +487,13 @@ async def classifySymptomReport(
         medicationAdherent=medicationAdherent,
         careContext=careContext,
         chronicConditions=chronicConditions,
+        patientAge=patientAge,
     )
 
     risk_level = classifyRiskLevel(risk_score)
 
     vital_flags = risk_factors.get("vital_flags", [])
+    age_flags = risk_factors.get("age_flags", [])
     chronic_match = risk_factors.get("chronic_condition_match")
     chronics = [chronic_match] if chronic_match else (chronicConditions or [])
 
@@ -367,6 +506,7 @@ async def classifySymptomReport(
         medicationAdherent=medicationAdherent,
         chronicConditions=chronics,
         vitalFlags=vital_flags,
+        ageFlags=age_flags,
         riskLevel=risk_level,
     )
 

@@ -9,11 +9,26 @@ from typing import Optional, List
 
 # ─── Valid symptom identifiers (matching SYMPTOM_WEIGHTS keys in risk engine) ───
 VALID_SYMPTOMS = {
+    # Critical
     "chest_pain", "difficulty_breathing", "shortness_of_breath", "severe_bleeding",
-    "unconscious", "stroke_symptoms", "high_fever", "persistent_vomiting",
-    "severe_pain", "confusion", "fainting", "rapid_heartbeat", "fever", "cough",
-    "headache", "nausea", "dizziness", "fatigue", "back_pain", "joint_pain",
-    "abdominal_pain", "muscle_weakness", "swelling", "rash",
+    "unconscious", "stroke_symptoms", "seizure", "severe_allergic_reaction",
+    "suicidal_ideation", "severe_dehydration", "blue_lips_or_face",
+    # High
+    "high_fever", "persistent_vomiting", "severe_pain", "confusion", "fainting",
+    "rapid_heartbeat", "severe_headache", "blood_in_stool", "blood_in_urine",
+    "coughing_blood", "vomiting_blood", "jaundice", "vision_loss", "slurred_speech",
+    "severe_diarrhea", "low_blood_sugar", "high_blood_pressure",
+    # Moderate
+    "fever", "cough", "headache", "nausea", "vomiting", "diarrhea", "dizziness",
+    "fatigue", "back_pain", "joint_pain", "abdominal_pain", "muscle_weakness",
+    "swelling", "rash", "sore_throat", "ear_pain", "chills", "night_sweats",
+    "weight_loss", "loss_of_appetite", "numbness", "tingling", "burning_urination",
+    "frequent_urination", "constipation", "bloating", "anxiety", "depression",
+    "insomnia", "palpitations",
+    # Low
+    "runny_nose", "sneezing",
+    # Special
+    "general_note", "escalation_request",
 }
 
 VALID_SEVERITIES  = {"MILD", "MODERATE", "SEVERE", "CRITICAL"}

@@ -1,6 +1,6 @@
 # Mermaid Diagrams for Thesis
 
-Copy and paste each code block below into your markdown files.
+Copy and paste each code block below into your markdown files. These diagrams match the current implementation, including follow-up responses, follow-up appointments, persistent notifications, tasks, and the expanded risk context.
 
 ---
 
@@ -8,32 +8,34 @@ Copy and paste each code block below into your markdown files.
 
 ```mermaid
 gantt
-    title Telemedicine Platform - Work Plan & Timeline
+    title Telemedicine Platform - Work Plan and Timeline
     dateFormat YYYY-MM-DD
-    
-    section Planning & Design
+
+    section Planning and Design
     Requirements Analysis           :des1, 2025-01-15, 30d
     Database Schema Design          :des2, after des1, 20d
     System Architecture             :des3, after des2, 20d
-    
+
     section Backend Development
     API Endpoints Setup             :dev1, after des3, 25d
     Controllers Implementation      :dev2, after dev1, 25d
-    Services & Business Logic       :dev3, after dev2, 30d
+    Services and Business Logic     :dev3, after dev2, 30d
     Risk Classification Engine      :dev4, after dev3, 20d
     Trend Analysis Module           :dev5, after dev4, 15d
-    
+    Follow-Up and Notification Flow :dev6, after dev5, 20d
+
     section Frontend Development
-    React Setup & Authentication    :front1, after des3, 25d
+    React Setup and Authentication  :front1, after des3, 25d
     Patient Dashboard               :front2, after front1, 20d
     Clinician Dashboard             :front3, after front2, 20d
     Admin Dashboard                 :front4, after front3, 15d
-    
-    section Integration & Testing
-    Backend-Frontend Integration    :test1, after dev5, 20d
+    Notification and Follow-Up UI   :front5, after front4, 15d
+
+    section Integration and Testing
+    Backend-Frontend Integration    :test1, after dev6, 20d
     System Testing                  :test2, after test1, 25d
     Clinical Logic Verification     :test3, after test2, 15d
-    
+
     section Deployment
     Deployment Preparation          :deploy1, after test3, 10d
     Production Release              :deploy2, after deploy1, 5d
@@ -45,200 +47,279 @@ gantt
 
 ```mermaid
 flowchart TD
-    Start(["Patient Submits<br/>Symptom Report"]) --> Validate{Valid Input?}
-    
-    Validate -->|No| Error["Return<br/>Validation Error"]
-    Error --> End1(["Request Fails"])
-    
-    Validate -->|Yes| Extract["Extract Features:<br/>• Symptoms<br/>• Severity<br/>• Frequency<br/>• Vital Signs<br/>• Medications"]
-    
-    Extract --> CheckChronic{Patient has<br/>Chronic<br/>Conditions?}
-    
-    CheckChronic -->|Yes| ApplyContext["Apply Care Context<br/>Rules"]
-    CheckChronic -->|No| BaselineScore["Calculate Base Risk<br/>Score"]
-    
-    ApplyContext --> BaselineScore
-    
-    BaselineScore --> SympScore["Score Each Symptom:<br/>• Weight × Severity<br/>• Duration Bonus<br/>• Frequency Multiplier"]
-    
-    SympScore --> AggScore["Aggregate Symptom<br/>Score"]
-    
-    AggScore --> VitalCheck{Vital Signs<br/>Critical?}
-    
-    VitalCheck -->|Yes| VitalBonus["Add Critical<br/>Vital Bonus"]
-    VitalCheck -->|No| MedCheck{Medication<br/>Non-Adherence?}
-    
-    VitalBonus --> MedCheck
-    
-    MedCheck -->|Yes| MedBonus["Add Adherence<br/>Penalty"]
-    MedCheck -->|No| FinalScore["Calculate Final<br/>Risk Score"]
-    
-    MedBonus --> FinalScore
-    
-    FinalScore --> ClassifyRisk{Risk Score<br/>Threshold?}
-    
-    ClassifyRisk -->|Score ≤ 30| RiskLow["RISK LEVEL<br/>= LOW"]
-    ClassifyRisk -->|Score 31-70| RiskMed["RISK LEVEL<br/>= MEDIUM"]
-    ClassifyRisk -->|Score ≥ 71| RiskHigh["RISK LEVEL<br/>= HIGH"]
-    
-    RiskLow --> CompareTrend["Compare With<br/>Previous Reports"]
-    RiskMed --> CompareTrend
-    RiskHigh --> CompareTrend
-    
-    CompareTrend --> AnalyzeTrend{Trend<br/>Status?}
-    
-    AnalyzeTrend -->|Score Increasing| Worsening["TREND<br/>= WORSENING<br/>Priority: HIGH"]
-    AnalyzeTrend -->|Score ±10%| Stable["TREND<br/>= STABLE"]
-    AnalyzeTrend -->|Score Decreasing| Improving["TREND<br/>= IMPROVING"]
-    
-    Worsening --> AlertCheck{Generate<br/>Alert?}
+    Start([Patient submits symptom report]) --> Validate{Valid input?}
+    Validate -->|No| Error[Return validation error]
+    Error --> End1([Request fails])
+
+    Validate -->|Yes| Extract[Extract symptoms, severity, duration, frequency, vitals, medication adherence]
+    Extract --> Context[Read patient age, chronic conditions, and active care context]
+    Context --> SymptomScore[Score symptoms using predefined weights]
+    SymptomScore --> Severity[Apply severity, duration, and frequency modifiers]
+    Severity --> Vitals{Vital signs abnormal?}
+    Vitals -->|Yes| VitalBonus[Add vital-sign risk score]
+    Vitals -->|No| Medication
+    VitalBonus --> Medication{Medication non-adherence?}
+    Medication -->|Yes| MedBonus[Add adherence penalty]
+    Medication -->|No| Age
+    MedBonus --> Age{Age risk modifier?}
+    Age -->|Yes| AgeBonus[Add infant, child, or elderly risk score]
+    Age -->|No| Care
+    AgeBonus --> Care
+    Care[Apply chronic-condition and care-context match bonuses] --> FinalScore[Calculate final risk score]
+
+    FinalScore --> Classify{Risk threshold}
+    Classify -->|Score >= 5.0| High[Risk level HIGH]
+    Classify -->|Score >= 2.5| Medium[Risk level MEDIUM]
+    Classify -->|Score < 2.5| Low[Risk level LOW]
+
+    High --> Trend[Compare with recent reports]
+    Medium --> Trend
+    Low --> Trend
+
+    Trend --> TrendStatus{Trend status}
+    TrendStatus -->|Increasing| Worsening[Trend WORSENING]
+    TrendStatus -->|Stable| Stable[Trend STABLE]
+    TrendStatus -->|Improving| Improving[Trend IMPROVING]
+
+    Worsening --> AlertCheck{Alert needed?}
     Stable --> AlertCheck
     Improving --> AlertCheck
-    
-    AlertCheck -->|Risk HIGH or<br/>Worsening| CreateAlert["Create Alert<br/>Priority = HIGH"]
-    AlertCheck -->|Risk MEDIUM<br/>& Worsening| CreateAlert
-    AlertCheck -->|Risk LOW &<br/>Stable| NoAlert["No Alert"]
-    
-    CreateAlert --> NotifyClinic["Notify Assigned<br/>Clinicians"]
-    NoAlert --> Store["Store Report<br/>in Database"]
-    NotifyClinic --> Store
-    
-    Store --> UpdatePatient["Update Patient:<br/>• currentRiskLevel<br/>• currentTrendStatus<br/>• lastReportTime"]
-    
-    UpdatePatient --> Success(["Report Processed<br/>Successfully"])
+
+    AlertCheck -->|HIGH risk or WORSENING trend| CreateAlert[Create alert record]
+    AlertCheck -->|No alert| Store[Store report and update patient status]
+    CreateAlert --> Notify[Create persistent notifications]
+    Notify --> Store
+    Store --> Success([Report processed successfully])
 ```
 
 ---
 
-## 4.3.1 Use-Case Diagram - System Boundaries & User Roles
+## 4.3.1 Use-Case Diagram - System Boundaries and User Roles
 
 ```mermaid
-usecase
-    actor Patient
-    actor Clinician
-    actor Administrator
-    actor System
-    
-    usecase UC1 as "Register/Login"
-    usecase UC2 as "Submit Symptom Report"
-    usecase UC3 as "View Own Health Data"
-    usecase UC4 as "Receive Alerts"
-    
-    usecase UC5 as "View Assigned Patients"
-    usecase UC6 as "Review Symptom Reports"
-    usecase UC7 as "Send Alerts"
-    usecase UC8 as "Track Patient Trends"
-    usecase UC9 as "View Metrics"
-    
-    usecase UC10 as "Manage Users"
-    usecase UC11 as "Manage Assignments"
-    usecase UC12 as "System Configuration"
-    usecase UC13 as "View System Metrics"
-    
-    usecase UC14 as "Classify Risk"
-    usecase UC15 as "Analyze Trends"
-    usecase UC16 as "Generate Alerts"
-    usecase UC17 as "Persist Data"
-    
+flowchart LR
+    Patient[Patient]
+    Clinician[Clinician]
+    Admin[Administrator]
+
+    subgraph Auth["Authentication and Access"]
+        UC1(Register and Login)
+        UC2(Access Role-Based Pages)
+    end
+
+    subgraph PatientFunctions["Patient Functions"]
+        UC3(Submit Symptom Report)
+        UC4(View Own Reports)
+        UC5(View Current Risk and Trend)
+        UC6(View Personal Alerts)
+        UC7(View Clinician Responses)
+        UC8(View Follow-Up Appointments)
+        UC9(View Notifications)
+    end
+
+    subgraph ClinicianFunctions["Clinician Functions"]
+        UC10(View Assigned Patients)
+        UC11(Review Patient Reports)
+        UC12(View Risk and Trend Status)
+        UC13(View and Triage Alerts)
+        UC14(Send Follow-Up Response)
+        UC15(Schedule Follow-Up Appointment)
+        UC16(Manage Follow-Up Tasks)
+    end
+
+    subgraph AdminFunctions["Administrator Functions"]
+        UC17(Manage Users)
+        UC18(Manage Assignments)
+        UC19(View System Metrics)
+        UC20(Create System Notifications)
+    end
+
+    subgraph SystemFunctions["System Intelligence and Workflow Functions"]
+        UC21(Classify Risk)
+        UC22(Analyze Trend)
+        UC23(Generate Alerts)
+        UC24(Store Reports and Status)
+        UC25(Create Persistent Notifications)
+        UC26(Store Follow-Up Responses and Appointments)
+    end
+
     Patient --> UC1
     Patient --> UC2
     Patient --> UC3
     Patient --> UC4
-    
+    Patient --> UC5
+    Patient --> UC6
+    Patient --> UC7
+    Patient --> UC8
+    Patient --> UC9
+
     Clinician --> UC1
-    Clinician --> UC5
-    Clinician --> UC6
-    Clinician --> UC7
-    Clinician --> UC8
-    Clinician --> UC9
-    
-    Administrator --> UC1
-    Administrator --> UC10
-    Administrator --> UC11
-    Administrator --> UC12
-    Administrator --> UC13
-    
-    System --> UC14
-    System --> UC15
-    System --> UC16
-    System --> UC17
-    
-    UC2 ..> UC14: triggers
-    UC2 ..> UC15: triggers
-    UC14 ..> UC16: triggers
-    UC16 ..> UC4: notifies
-    UC16 ..> UC7: notifies
-    
-    UC2 ..> UC17: persists
-    UC11 ..> UC17: persists
+    Clinician --> UC2
+    Clinician --> UC10
+    Clinician --> UC11
+    Clinician --> UC12
+    Clinician --> UC13
+    Clinician --> UC14
+    Clinician --> UC15
+    Clinician --> UC16
+
+    Admin --> UC1
+    Admin --> UC2
+    Admin --> UC17
+    Admin --> UC18
+    Admin --> UC19
+    Admin --> UC20
+
+    UC3 --> UC21
+    UC3 --> UC22
+    UC21 --> UC23
+    UC22 --> UC23
+    UC3 --> UC24
+    UC23 --> UC25
+    UC25 --> UC6
+    UC25 --> UC9
+    UC25 --> UC13
+    UC14 --> UC26
+    UC15 --> UC26
+    UC26 --> UC25
+    UC26 --> UC7
+    UC26 --> UC8
+    UC20 --> UC25
 ```
 
 ---
 
-## 4.3.2 Sequence Diagram - Symptom Report Data Flow
+## 4.3.2 Sequence Diagram - Symptom Report and Follow-Up Flow
 
 ```mermaid
 sequenceDiagram
     actor Patient
+    actor Clinician
     participant Frontend as React Frontend
-    participant Controller as SymptomReport<br/>Controller
-    participant Service as SymptomReport<br/>Service
-    participant RiskSvc as Risk<br/>Classification
-    participant TrendSvc as Trend<br/>Analysis
-    participant AlertSvc as Alert<br/>Service
-    participant DB as Database<br/>Prisma/PG
-    participant Clinician
-    
-    Patient->>Frontend: Fill & Submit<br/>Symptom Form
-    Frontend->>Frontend: Validate Input
-    Frontend->>Controller: POST /symptom-reports<br/>(symptoms, vitals, etc.)
-    
-    Controller->>Service: processSymptomReport(data)
-    
-    Service->>DB: Query Patient<br/>Chronic Conditions
-    DB-->>Service: Patient Data
-    
-    Service->>RiskSvc: calculateRisk(symptoms,<br/>severity, vitals,<br/>chronic_conditions)
-    
-    RiskSvc->>RiskSvc: Apply Symptom Weights<br/>Apply Vital Thresholds<br/>Apply Care Context Rules
-    RiskSvc-->>Service: riskScore, riskLevel
-    
-    Service->>DB: Query Previous<br/>Reports
-    DB-->>Service: Last 5 Reports
-    
-    Service->>TrendSvc: analyzeTrend(current_score,<br/>previous_scores)
-    
-    TrendSvc->>TrendSvc: Compare Trajectory<br/>Calculate Change %<br/>Apply Trend Rules
-    TrendSvc-->>Service: trendStatus, explanation
-    
-    Service->>AlertSvc: shouldGenerateAlert(riskLevel,<br/>trendStatus)
-    
-    AlertSvc->>AlertSvc: Check Alert Thresholds<br/>Risk HIGH? Worsening?
-    AlertSvc-->>Service: needsAlert=true/false
-    
-    alt Need Alert
-        Service->>DB: Create Alert Record<br/>Create SymptomReport
-        DB-->>Service: IDs Confirmed
-        
-        Service->>DB: Update Patient<br/>currentRiskLevel<br/>currentTrendStatus
-        DB-->>Service: Updated
-        
-        Service-->>Controller: Report + Alert Created
-        Controller-->>Frontend: 201 Created<br/>+ Alert Data
-        
-        Frontend->>Patient: Display Success<br/>+ Risk/Trend Info
-        
-        DB->>Clinician: Send Alert Notification
-        Clinician->>Frontend: View Alert<br/>in Dashboard
-    else No Alert Needed
-        Service->>DB: Create SymptomReport
-        Service->>DB: Update Patient Fields
-        DB-->>Service: Confirmed
-        
-        Service-->>Controller: Report Created
-        Controller-->>Frontend: 201 Created
-        Frontend->>Patient: Display Success
+    participant Route as Symptom Report Route
+    participant Service as Symptom Report Service
+    participant DB as Prisma and PostgreSQL
+    participant Risk as Risk Classification Service
+    participant Trend as Trend Analysis Service
+    participant Alert as Alert Service
+    participant Notify as Notification Service
+    participant FollowUp as Follow-Up Services
+
+    Patient->>Frontend: Fill in symptom form
+    Frontend->>Frontend: Validate required fields
+    Frontend->>Route: POST /api/symptom-reports
+    Route->>Service: createSymptomReport(...)
+
+    Service->>DB: Fetch patient context, age, conditions, and assignment
+    DB-->>Service: Patient and care context
+
+    Service->>DB: Create symptom report with default LOW risk
+    DB-->>Service: New report record
+
+    Service->>Risk: classifySymptomReport(...)
+    Risk-->>Service: riskLevel, riskScore, riskFactors, explanation
+
+    Service->>Trend: analyzeTrend(patientId, riskScore)
+    Trend-->>Service: trendStatus
+
+    Service->>DB: Update report with computed risk results
+    Service->>DB: Update patient currentRiskLevel and currentTrendStatus
+
+    alt Risk level is HIGH
+        Service->>Alert: generateRiskAlert(...)
+        Alert->>DB: Create HIGH_RISK alert
+        Alert->>Notify: Create care-team and patient notifications
+        Notify->>DB: Save notification records
+        Notify-->>Frontend: Realtime notification event
     end
+
+    alt Trend status is WORSENING
+        Service->>Alert: generateTrendAlert(...)
+        Alert->>DB: Create WORSENING_TREND alert
+        Alert->>Notify: Create care-team and patient notifications
+        Notify->>DB: Save notification records
+        Notify-->>Frontend: Realtime notification event
+    end
+
+    Service-->>Route: Return created report
+    Route-->>Frontend: 201 Created
+    Frontend-->>Patient: Show success and updated status
+
+    Clinician->>Frontend: Review alert or patient report
+    Frontend->>FollowUp: POST /api/followup-responses or /api/followup-appointments
+    FollowUp->>DB: Store response or appointment
+    FollowUp->>Notify: Notify patient
+    Notify->>DB: Save notification record
+    Notify-->>Frontend: Realtime notification event
+    Frontend-->>Patient: Show response, appointment, or notification
+```
+
+---
+
+## 4.4.1 Context Diagram and DFD
+
+```mermaid
+flowchart LR
+    Patient[Patient]
+    Clinician[Clinician]
+    Admin[Administrator]
+    Frontend[Web Frontend]
+    Backend[Backend API]
+    Database[(PostgreSQL Database)]
+
+    Patient -->|Submit reports, view status, responses, appointments, notifications| Frontend
+    Clinician -->|Review patients, alerts, tasks, responses, follow-ups| Frontend
+    Admin -->|Manage users, assignments, notifications, metrics| Frontend
+
+    Frontend -->|Send API requests| Backend
+    Backend -->|Return data, decisions, notifications| Frontend
+    Backend -->|Store and retrieve records| Database
+```
+
+```mermaid
+flowchart TD
+    A[Patient enters symptoms, vitals, and medication adherence]
+    B[Frontend validates form]
+    C[Backend receives symptom report]
+    D[Read patient context, age, chronic conditions, and active assignment]
+    E[Run risk classification]
+    F[Run trend analysis]
+    G[Update report and patient status]
+    H{Is an alert needed?}
+    I[Create alert record]
+    M[Create persistent notifications]
+    J[Show updated status to patient]
+    K[Show alert on clinician dashboard]
+    N[Clinician sends response or schedules follow-up]
+    O[Store response or appointment]
+    P[Notify patient about clinician action]
+    L[(Database)]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    C --> L
+    D --> L
+    G --> L
+    H -->|Yes| I
+    I --> M
+    I --> L
+    M --> L
+    M --> J
+    M --> K
+    H -->|No| J
+    I --> K
+    K --> N
+    N --> O
+    O --> L
+    O --> P
+    P --> L
+    P --> J
+    G --> J
 ```
 
 ---
@@ -249,37 +330,42 @@ sequenceDiagram
 erDiagram
     USER ||--o| PATIENT : has
     USER ||--o| CLINICIAN : has
+    USER ||--o{ NOTIFICATION : receives
+    USER ||--o{ PUSH_SUBSCRIPTION : owns
+    USER ||--o{ AUDIT_LOG : creates
+    USER ||--o{ ALERT : acts_on
+
     PATIENT ||--o{ ASSIGNMENT : assigned
     CLINICIAN ||--o{ ASSIGNMENT : manages
     PATIENT ||--o{ SYMPTOM_REPORT : submits
     PATIENT ||--o{ ALERT : receives
-    CLINICIAN ||--o{ ALERT : receives
-    SYMPTOM_REPORT ||--o{ SYMPTOM_DETAIL : contains
+    CLINICIAN ||--o{ ALERT : assigned
+    SYMPTOM_REPORT ||--o{ ALERT : triggers
+
+    PATIENT ||--o{ TASK : has
+    CLINICIAN ||--o{ TASK : assigned
+    ALERT ||--o{ TASK : creates
+
+    SYMPTOM_REPORT ||--o{ FOLLOW_UP_RESPONSE : receives
+    PATIENT ||--o{ FOLLOW_UP_RESPONSE : has
+    CLINICIAN ||--o{ FOLLOW_UP_RESPONSE : writes
+
+    PATIENT ||--o{ FOLLOW_UP_APPOINTMENT : has
+    CLINICIAN ||--o{ FOLLOW_UP_APPOINTMENT : schedules
 
     USER {
         int id PK
         string email UK
         string password
-        string phone
-        string fullName
-        enum role
-        datetime createdAt
+        Role role
     }
 
     PATIENT {
         int id PK
         int userId FK
-        string emergencyContact
-        string address
-        datetime dateOfBirth
-        string gender
         string chronicConditions
-        string allergies
-        string baselineStatus
-        enum currentRiskLevel
-        enum currentTrendStatus
-        datetime lastRiskUpdate
-        datetime lastTrendUpdate
+        RiskLevel currentRiskLevel
+        TrendStatus currentTrendStatus
         datetime lastReportTime
     }
 
@@ -294,41 +380,67 @@ erDiagram
         int id PK
         int clinicianId FK
         int patientId FK
-        datetime assignedAt
-        enum status
-        datetime endedAt
-        enum careContext
-        string reason
+        AssignmentStatus status
+        CareContext careContext
     }
 
     SYMPTOM_REPORT {
         int id PK
         int patientId FK
-        datetime reportedAt
-        string overallCondition
-        int painLevel
         string symptoms
-        string activities
-        string medications
-    }
-
-    SYMPTOM_DETAIL {
-        int id PK
-        int reportId FK
-        string symptom
-        enum severity
-        enum frequency
-        string description
+        Severity severity
+        Frequency frequency
+        bool medicationAdherent
+        RiskLevel riskLevel
+        float riskScore
     }
 
     ALERT {
         int id PK
         int patientId FK
+        int symptomReportId FK
+        int assignedToClinicianId FK
+        AlertPriority priority
+        string alertType
+        AlertStatus status
+        bool isRead
+    }
+
+    TASK {
+        int id PK
+        int patientId FK
+        int assignedClinicianId FK
+        int createdFromAlertId FK
+        string title
+        TaskStatus status
+    }
+
+    FOLLOW_UP_RESPONSE {
+        int id PK
+        int symptomReportId FK
         int clinicianId FK
-        enum priority
+        int patientId FK
         string message
-        boolean acknowledged
-        datetime createdAt
+        bool actionRequired
+    }
+
+    FOLLOW_UP_APPOINTMENT {
+        int id PK
+        int patientId FK
+        int clinicianId FK
+        datetime scheduledAt
+        string reason
+        string status
+    }
+
+    NOTIFICATION {
+        int id PK
+        int userId FK
+        string title
+        string message
+        string type
+        bool isRead
+        string link
     }
 ```
 
@@ -346,18 +458,30 @@ graph TB
         PD["Patient Dashboard"]
         CD["Clinician Dashboard"]
         AD["Admin Dashboard"]
+        NB["Notification Bell"]
+        FU["Follow-Up UI"]
     end
 
-    subgraph Auth["Authentication"]
+    subgraph Auth["Authentication and Context"]
         AP["Auth Provider"]
+        NP["Notification Provider"]
         ProtectedRoute["Protected Routes"]
     end
 
     subgraph API["Backend Layer (FastAPI)"]
-        Routes["Routes Layer<br/>endpoints"]
+        Routes["Routes Layer<br/>symptoms, alerts, dashboard,<br/>follow-ups, notifications"]
         Controllers["Controllers<br/>HTTP Logic"]
         Services["Services<br/>Business Logic"]
         Models["Schemas<br/>Data Validation"]
+        Realtime["Realtime Broker<br/>and Web Push"]
+    end
+
+    subgraph Workflow["Clinical Workflow"]
+        Risk["Risk Classification"]
+        Trend["Trend Analysis"]
+        Alert["Alert Service"]
+        FollowUp["Follow-Up Services"]
+        Notify["Notification Service"]
     end
 
     subgraph DB["Data Layer"]
@@ -367,17 +491,34 @@ graph TB
 
     Client -->|HTTP Requests| Routes
     Client -->|Auth Check| Auth
+    NB --> NP
+    FU --> Routes
     Auth -->|Validate Token| Routes
     Routes -->|Process| Controllers
+    Routes -->|Direct service routes| Services
     Controllers -->|Business Logic| Services
     Controllers -->|Validate| Models
+    Services --> Risk
+    Services --> Trend
+    Services --> Alert
+    Services --> FollowUp
+    Alert --> Notify
+    FollowUp --> Notify
+    Notify --> Realtime
+    Realtime --> NB
     Services -->|Query| Prisma
+    Risk --> Prisma
+    Trend --> Prisma
+    Alert --> Prisma
+    FollowUp --> Prisma
+    Notify --> Prisma
     Prisma -->|SQL| PostgreSQL
-    
+
     style Client fill:#e1f5ff
     style API fill:#f3e5f5
     style DB fill:#e8f5e9
     style Auth fill:#fff3e0
+    style Workflow fill:#fff9c4
 ```
 
 ### Frontend Component Architecture
@@ -387,8 +528,8 @@ graph TB
     subgraph Pages["Pages"]
         LP["LoginPage"]
         SP["SignupPage"]
-        PD["PatientDashboard"]
-        CD["ClinicianDashboard"]
+        PD["PatientDashboard<br/>reports, responses, appointments"]
+        CD["ClinicianDashboard<br/>alerts, tasks, follow-ups"]
         AD["AdminDashboard"]
     end
 
@@ -396,17 +537,20 @@ graph TB
         Sidebar["Sidebar<br/>Navigation"]
         TopBar["TopBar<br/>Header"]
         AppLayout["AppLayout<br/>Container"]
+        NB["NotificationBell"]
     end
 
     subgraph Core["Core Components"]
         PR["ProtectedRoute<br/>Auth Guard"]
         LS["LoadingSpinner"]
         Modal["Modal<br/>Dialog"]
-        Toast["ToastContainer<br/>Notifications"]
+        Toast["ToastContainer"]
+        Empty["EmptyState"]
+        Tooltip["Tooltip"]
     end
 
     subgraph Display["Display Components"]
-        AC["AlertCard"]
+        AC["AlertCard<br/>triage, task, response, schedule actions"]
         SC["StatCard"]
         RB["RiskBadge"]
         TI["TrendIndicator"]
@@ -415,7 +559,7 @@ graph TB
     subgraph Context["Context Providers"]
         Auth["AuthContext"]
         Toast_Ctx["ToastContext"]
-        Notif["NotificationContext"]
+        Notif["NotificationContext<br/>API + realtime stream"]
     end
 
     subgraph API["API Services"]
@@ -427,6 +571,10 @@ graph TB
         MetricsAPI["metrics.js"]
         SymptomAPI["symptomReports.js"]
         AssignmentAPI["assignments.js"]
+        TaskAPI["tasks.js"]
+        FollowRespAPI["followupResponses.js"]
+        FollowApptAPI["followupAppointments.js"]
+        NotificationAPI["notifications.js"]
     end
 
     LP --> Auth
@@ -434,22 +582,20 @@ graph TB
     PD --> PR
     CD --> PR
     AD --> PR
-    
     AppLayout --> Sidebar
     AppLayout --> TopBar
-    PD --> Toast
-    CD --> Toast
-    AD --> Toast
-    
+    TopBar --> NB
+    NB --> Notif
     Pages --> Display
-    Display --> AC
-    Display --> RB
-    Display --> TI
-    
-    Pages --> API
-    PR --> Auth
-    Toast --> Toast_Ctx
-    
+    Pages --> Core
+    PD --> FollowRespAPI
+    PD --> FollowApptAPI
+    CD --> FollowRespAPI
+    CD --> FollowApptAPI
+    CD --> TaskAPI
+    NB --> NotificationAPI
+    Notif --> NotificationAPI
+
     style Pages fill:#e3f2fd
     style Layout fill:#f1f8e9
     style Core fill:#fce4ec
@@ -458,113 +604,13 @@ graph TB
     style API fill:#f3e5f5
 ```
 
-### Backend Architecture - MVC Pattern
-
-```mermaid
-graph LR
-    subgraph Routes["Routes<br/>Endpoints"]
-        R_Auth["auth.py"]
-        R_Patient["patients.py"]
-        R_Clinician["clinicians.py"]
-        R_Alert["alerts.py"]
-        R_Dashboard["dashboard.py"]
-        R_Metrics["metrics.py"]
-        R_Symptom["symptom_reports.py"]
-        R_Assignment["assignments.py"]
-        R_User["users.py"]
-    end
-
-    subgraph Controllers["Controllers<br/>HTTP Handlers"]
-        C_Auth["auth_controller.py"]
-        C_Patient["patient_controller.py"]
-        C_Clinician["clinician_controller.py"]
-        C_Alert["alert_controller.py"]
-        C_Dashboard["dashboard_controller.py"]
-        C_Metrics["metrics_controller.py"]
-        C_Symptom["symptom_report_controller.py"]
-        C_Assignment["assignment_controller.py"]
-        C_User["user_controller.py"]
-    end
-
-    subgraph Services["Services<br/>Business Logic"]
-        S_Auth["auth.py"]
-        S_Patient["patient.py"]
-        S_Clinician["clinician.py"]
-        S_Alert["alert_service.py"]
-        S_Dashboard["dashboard.py"]
-        S_Metrics["metrics.py"]
-        S_Symptom["symptom_report.py"]
-        S_Assignment["assignment.py"]
-        S_User["user.py"]
-        S_Risk["risk_classification.py"]
-        S_Trend["trend_analysis.py"]
-    end
-
-    subgraph Schemas["Schemas<br/>Validation"]
-        SH_Auth["auth_schema.py"]
-        SH_Patient["patient_schema.py"]
-        SH_Alert["alert_schema.py"]
-        SH_Metrics["metrics_schema.py"]
-        SH_Symptom["symptom_report_schema.py"]
-        SH_Assignment["assignment_schema.py"]
-    end
-
-    subgraph Utils["Utilities"]
-        LOG["logging.py"]
-        COMP["compliance.py"]
-        COMPR["compression.py"]
-        HTTP["http.py"]
-    end
-
-    R_Auth --> C_Auth
-    R_Patient --> C_Patient
-    R_Clinician --> C_Clinician
-    R_Alert --> C_Alert
-    R_Dashboard --> C_Dashboard
-    R_Metrics --> C_Metrics
-    R_Symptom --> C_Symptom
-    R_Assignment --> C_Assignment
-    R_User --> C_User
-
-    C_Auth --> S_Auth
-    C_Patient --> S_Patient
-    C_Clinician --> S_Clinician
-    C_Alert --> S_Alert
-    C_Dashboard --> S_Dashboard
-    C_Metrics --> S_Metrics
-    C_Symptom --> S_Symptom
-    C_Assignment --> S_Assignment
-    C_User --> S_User
-
-    S_Symptom --> S_Risk
-    S_Symptom --> S_Trend
-    S_Alert --> S_Risk
-    S_Dashboard --> S_Risk
-    S_Dashboard --> S_Trend
-
-    C_Auth --> SH_Auth
-    C_Patient --> SH_Patient
-    C_Alert --> SH_Alert
-    C_Symptom --> SH_Symptom
-    C_Dashboard --> SH_Metrics
-    C_Assignment --> SH_Assignment
-
-    style Routes fill:#bbdefb
-    style Controllers fill:#c8e6c9
-    style Services fill:#fff9c4
-    style Schemas fill:#f8bbd0
-    style Utils fill:#dcedc8
-```
-
 ---
 
-## How to Use:
+## How to Use
 
-1. Open VS Code
-2. Create or edit a markdown file (.md)
-3. Find the diagram you need above
-4. Copy the entire code block (between the triple backticks)
-5. Paste it into your markdown file
-6. Install "Markdown Preview Mermaid Support" extension
-7. The diagram will render automatically in VS Code preview
-
+1. Open VS Code.
+2. Create or edit a markdown file (`.md`).
+3. Find the diagram you need above.
+4. Copy the entire code block between the triple backticks.
+5. Paste it into your markdown file.
+6. Install a Mermaid preview extension if your editor does not render Mermaid by default.

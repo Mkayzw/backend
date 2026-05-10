@@ -39,7 +39,7 @@ async def createSymptomReport(
     Notes are stored as supplementary context only — they are NOT used for
     risk scoring. All scoring is driven by the structured fields.
     """
-    # 1. Resolve patient's clinical context (chronic conditions)
+    # 1. Resolve patient's clinical context (chronic conditions, age)
     patient = await db.patient.find_unique(where={"id": patientId})
     chronic_conditions: List[str] = []
     if patient and patient.chronicConditions:
@@ -47,6 +47,17 @@ async def createSymptomReport(
             chronic_conditions = json.loads(patient.chronicConditions)
         except (json.JSONDecodeError, TypeError):
             chronic_conditions = []
+
+    patient_age: Optional[int] = None
+    if patient and getattr(patient, "dateOfBirth", None):
+        try:
+            dob = patient.dateOfBirth
+            today = datetime.now(dob.tzinfo) if dob.tzinfo else datetime.now()
+            patient_age = today.year - dob.year - (
+                (today.month, today.day) < (dob.month, dob.day)
+            )
+        except Exception:
+            patient_age = None
 
     # 2. Resolve care context from the most recent active assignment
     active_assignment = await db.assignment.find_first(
@@ -92,6 +103,7 @@ async def createSymptomReport(
         medicationAdherent=medicationAdherent,
         careContext=care_context,
         chronicConditions=chronic_conditions,
+        patientAge=patient_age,
     )
 
     # 5. Trend analysis — compares current risk score against recent history

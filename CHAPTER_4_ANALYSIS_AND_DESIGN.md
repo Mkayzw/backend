@@ -2,9 +2,9 @@
 
 ## 4.1 Introduction
 
-This chapter explains how the telemedicine platform was analysed and designed before (and during) implementation. It describes the problem domain, the main user requirements, the system components, and the overall architecture. Diagrams are included to show how the system works from a user and technical perspective.
+This chapter explains how the telemedicine platform was analysed and designed before and during implementation. It describes the problem domain, the main user requirements, the system components, and the overall architecture. Diagrams are included to show how the system works from a user and technical perspective.
 
-The system is a web-based remote symptom monitoring platform. Patients submit symptom reports through a web interface, and clinicians review patient status, trends, and alerts through a dashboard. The backend processes symptom reports using a rule-based alert engine (risk classification and trend analysis) and stores all data in a database.
+The system is a web-based remote symptom monitoring platform. Patients submit symptom reports through a web interface, and clinicians review patient status, trends, alerts, follow-up appointments, and responses through a dashboard. The backend processes symptom reports using a rule-based alert engine, stores the results in a database, creates alerts when needed, and supports persistent in-app notifications.
 
 ## 4.2 Detailed Analysis of the Problem Domain and User Requirements
 
@@ -20,29 +20,37 @@ The following functional requirements describe what the system must do.
 
 **Patient Features**
 
-- A patient must be able to submit a symptom report (symptoms, severity, duration, frequency, and optional vitals).
+- A patient must be able to submit a symptom report (symptoms, severity, duration, frequency, medication adherence, and optional vitals).
 - A patient must be able to view their own submitted reports and current status (risk and trend).
 - A patient must be able to view alerts related to their reports.
+- A patient must be able to view clinician responses and scheduled follow-up appointments.
+- A patient must be able to view in-app notifications.
 
 **Clinician Features**
 
 - A clinician must be able to view assigned patients.
 - A clinician must be able to review symptom reports submitted by assigned patients.
 - A clinician must be able to view patient risk level and trend status.
-- A clinician must be able to view alerts and mark alerts as read.
+- A clinician must be able to view alerts and mark or triage alerts.
+- A clinician must be able to send follow-up responses to patients.
+- A clinician must be able to schedule and update follow-up appointments.
+- A clinician must be able to create or manage follow-up tasks.
 
 **Administrator Features**
 
-- An admin must be able to manage users (basic platform administration).
+- An admin must be able to manage users.
 - An admin must be able to manage patient-clinician assignments.
-- An admin must be able to view system metrics (high level monitoring).
+- An admin must be able to view system metrics.
+- An admin must be able to create system notifications when needed.
 
-**Clinical Intelligence (Alert Engine)**
+**Clinical Intelligence and Workflow**
 
 - The system must classify risk level for each symptom report using predefined rules.
 - The system must analyse patient trends using recent report history.
+- The system must use patient age, chronic conditions, care context, symptom severity, duration, frequency, vitals, and medication adherence when calculating risk.
 - The system must generate alerts when risk is high or when trend is worsening.
-- The system must store explanations (reasoning trail) with reports and alerts.
+- The system must store explanations with reports and alerts.
+- The system must store notifications, follow-up responses, and follow-up appointments so patient care can continue after the first alert.
 
 ### 4.2.2 Non-functional Requirements
 
@@ -51,7 +59,7 @@ The following non-functional requirements describe quality and constraints.
 **Usability**
 
 - The system should be easy to use for patients and clinicians with clear dashboards and simple workflows.
-- The interface should present risk/trend results clearly using badges, indicators, and alerts.
+- The interface should present risk/trend results clearly using badges, indicators, alerts, and notifications.
 
 **Performance**
 
@@ -65,20 +73,20 @@ The following non-functional requirements describe quality and constraints.
 
 **Reliability**
 
-- The system should store reports and alerts reliably in the database.
+- The system should store reports, alerts, follow-up records, appointments, notifications, and metrics reliably in the database.
 - The system should handle invalid input gracefully and return clear errors.
 
 **Maintainability**
 
-- The system should be modular (frontend components and backend services separated) so it is easier to update and extend.
+- The system should be modular, with frontend components and backend services separated, so it is easier to update and extend.
 
 ## 4.3 Identification of System Components and Functionalities
 
 The system can be understood as four main layers:
 
-1. **Frontend layer**: Web user interface (Patient, Clinician, Admin dashboards).
-2. **Backend layer**: FastAPI routes/controllers/services implementing business logic.
-3. **Clinical intelligence layer**: Risk classification, trend analysis, and alert generation.
+1. **Frontend layer**: Web user interface (Patient, Clinician, Admin dashboards, notification bell, and follow-up screens).
+2. **Backend layer**: FastAPI routes, controllers, schemas, and services implementing business logic.
+3. **Clinical intelligence and workflow layer**: Risk classification, trend analysis, alert generation, notification handling, and follow-up workflow.
 4. **Data layer**: PostgreSQL database accessed using Prisma ORM.
 
 ### 4.3.1 Use-Case Diagram/s
@@ -86,124 +94,161 @@ The system can be understood as four main layers:
 The use-case diagram below shows the main user roles (Patient, Clinician, Administrator) and the core system actions.
 
 ```mermaid
-usecase
-    actor Patient
-    actor Clinician
-    actor Administrator
-    actor System
-    
-    usecase UC1 as "Register/Login"
-    usecase UC2 as "Submit Symptom Report"
-    usecase UC3 as "View Own Health Data"
-    usecase UC4 as "Receive Alerts"
-    
-    usecase UC5 as "View Assigned Patients"
-    usecase UC6 as "Review Symptom Reports"
-    usecase UC7 as "Send Alerts"
-    usecase UC8 as "Track Patient Trends"
-    usecase UC9 as "View Metrics"
-    
-    usecase UC10 as "Manage Users"
-    usecase UC11 as "Manage Assignments"
-    usecase UC12 as "System Configuration"
-    usecase UC13 as "View System Metrics"
-    
-    usecase UC14 as "Classify Risk"
-    usecase UC15 as "Analyze Trends"
-    usecase UC16 as "Generate Alerts"
-    usecase UC17 as "Persist Data"
-    
+flowchart LR
+    Patient[Patient]
+    Clinician[Clinician]
+    Admin[Administrator]
+
+    subgraph Auth["Authentication and Access"]
+        UC1(Register and Login)
+        UC2(Access Role-Based Pages)
+    end
+
+    subgraph PatientFunctions["Patient Functions"]
+        UC3(Submit Symptom Report)
+        UC4(View Own Reports)
+        UC5(View Current Risk and Trend)
+        UC6(View Personal Alerts)
+        UC7(View Clinician Responses)
+        UC8(View Follow-Up Appointments)
+        UC9(View Notifications)
+    end
+
+    subgraph ClinicianFunctions["Clinician Functions"]
+        UC10(View Assigned Patients)
+        UC11(Review Patient Reports)
+        UC12(View Risk and Trend Status)
+        UC13(View and Triage Alerts)
+        UC14(Send Follow-Up Response)
+        UC15(Schedule Follow-Up Appointment)
+        UC16(Manage Follow-Up Tasks)
+    end
+
+    subgraph AdminFunctions["Administrator Functions"]
+        UC17(Manage Users)
+        UC18(Manage Assignments)
+        UC19(View System Metrics)
+        UC20(Create System Notifications)
+    end
+
+    subgraph SystemFunctions["System Intelligence and Workflow Functions"]
+        UC21(Classify Risk)
+        UC22(Analyze Trend)
+        UC23(Generate Alerts)
+        UC24(Store Reports and Status)
+        UC25(Create Persistent Notifications)
+        UC26(Store Follow-Up Responses and Appointments)
+    end
+
     Patient --> UC1
     Patient --> UC2
     Patient --> UC3
     Patient --> UC4
-    
+    Patient --> UC5
+    Patient --> UC6
+    Patient --> UC7
+    Patient --> UC8
+    Patient --> UC9
+
     Clinician --> UC1
-    Clinician --> UC5
-    Clinician --> UC6
-    Clinician --> UC7
-    Clinician --> UC8
-    Clinician --> UC9
-    
-    Administrator --> UC1
-    Administrator --> UC10
-    Administrator --> UC11
-    Administrator --> UC12
-    Administrator --> UC13
-    
-    System --> UC14
-    System --> UC15
-    System --> UC16
-    System --> UC17
-    
-    UC2 ..> UC14: triggers
-    UC2 ..> UC15: triggers
-    UC14 ..> UC16: triggers
-    UC16 ..> UC4: notifies
-    UC16 ..> UC7: notifies
-    
-    UC2 ..> UC17: persists
-    UC11 ..> UC17: persists
+    Clinician --> UC2
+    Clinician --> UC10
+    Clinician --> UC11
+    Clinician --> UC12
+    Clinician --> UC13
+    Clinician --> UC14
+    Clinician --> UC15
+    Clinician --> UC16
+
+    Admin --> UC1
+    Admin --> UC2
+    Admin --> UC17
+    Admin --> UC18
+    Admin --> UC19
+    Admin --> UC20
+
+    UC3 --> UC21
+    UC3 --> UC22
+    UC21 --> UC23
+    UC22 --> UC23
+    UC3 --> UC24
+    UC23 --> UC25
+    UC25 --> UC6
+    UC25 --> UC9
+    UC25 --> UC13
+    UC14 --> UC26
+    UC15 --> UC26
+    UC26 --> UC25
+    UC26 --> UC7
+    UC26 --> UC8
+    UC20 --> UC25
 ```
 
 ### 4.3.2 Sequence Diagram
 
-The sequence diagram below shows the typical flow when a patient submits a symptom report.
+The sequence diagram below shows the typical flow when a patient submits a symptom report and the follow-up workflow continues after an alert.
 
 ```mermaid
 sequenceDiagram
     actor Patient
+    actor Clinician
     participant Frontend as React Frontend
-    participant Controller as SymptomReport<br/>Controller
-    participant Service as SymptomReport<br/>Service
-    participant RiskSvc as Risk<br/>Classification
-    participant TrendSvc as Trend<br/>Analysis
-    participant AlertSvc as Alert<br/>Service
-    participant DB as Database<br/>Prisma/PG
-    participant Clinician
-    
-    Patient->>Frontend: Fill & Submit<br/>Symptom Form
-    Frontend->>Frontend: Validate Input
-    Frontend->>Controller: POST /symptom-reports<br/>(symptoms, vitals, etc.)
-    
-    Controller->>Service: processSymptomReport(data)
-    
-    Service->>DB: Query Patient<br/>Chronic Conditions
-    DB-->>Service: Patient Data
-    
-    Service->>RiskSvc: calculateRisk(symptoms,<br/>severity, vitals,<br/>chronic_conditions)
-    
-    RiskSvc->>RiskSvc: Apply Rules
-    RiskSvc-->>Service: riskScore, riskLevel
-    
-    Service->>DB: Query Previous<br/>Reports
-    DB-->>Service: Last Reports
-    
-    Service->>TrendSvc: analyzeTrend(current_score,<br/>previous_scores)
-    
-    TrendSvc->>TrendSvc: Apply Trend Rules
-    TrendSvc-->>Service: trendStatus
-    
-    Service->>AlertSvc: shouldGenerateAlert(riskLevel,<br/>trendStatus)
-    AlertSvc-->>Service: needsAlert=true/false
-    
-    alt Need Alert
-        Service->>DB: Create SymptomReport
-        Service->>DB: Create Alert Record
-        Service->>DB: Update Patient Fields
-        DB-->>Service: Confirmed
-        Service-->>Controller: Report + Alert Created
-        Controller-->>Frontend: 201 Created
-        Frontend->>Patient: Display Success
-        DB->>Clinician: Alert available
-    else No Alert Needed
-        Service->>DB: Create SymptomReport
-        Service->>DB: Update Patient Fields
-        DB-->>Service: Confirmed
-        Service-->>Controller: Report Created
-        Controller-->>Frontend: 201 Created
-        Frontend->>Patient: Display Success
+    participant Route as Symptom Report Route
+    participant Service as Symptom Report Service
+    participant DB as Prisma and PostgreSQL
+    participant Risk as Risk Classification Service
+    participant Trend as Trend Analysis Service
+    participant Alert as Alert Service
+    participant Notify as Notification Service
+    participant FollowUp as Follow-Up Services
+
+    Patient->>Frontend: Fill in symptom form
+    Frontend->>Frontend: Validate required fields
+    Frontend->>Route: POST /api/symptom-reports
+    Route->>Service: createSymptomReport(...)
+
+    Service->>DB: Fetch patient context, age, conditions, and assignment
+    DB-->>Service: Patient and care context
+
+    Service->>DB: Create symptom report with default LOW risk
+    DB-->>Service: New report record
+
+    Service->>Risk: classifySymptomReport(...)
+    Risk-->>Service: riskLevel, riskScore, riskFactors, explanation
+
+    Service->>Trend: analyzeTrend(patientId, riskScore)
+    Trend-->>Service: trendStatus
+
+    Service->>DB: Update report with computed risk results
+    Service->>DB: Update patient currentRiskLevel and currentTrendStatus
+
+    alt Risk level is HIGH
+        Service->>Alert: generateRiskAlert(...)
+        Alert->>DB: Create HIGH_RISK alert
+        Alert->>Notify: Create care-team and patient notifications
+        Notify->>DB: Save notification records
+        Notify-->>Frontend: Realtime notification event
     end
+
+    alt Trend status is WORSENING
+        Service->>Alert: generateTrendAlert(...)
+        Alert->>DB: Create WORSENING_TREND alert
+        Alert->>Notify: Create care-team and patient notifications
+        Notify->>DB: Save notification records
+        Notify-->>Frontend: Realtime notification event
+    end
+
+    Service-->>Route: Return created report
+    Route-->>Frontend: 201 Created
+    Frontend-->>Patient: Show success and updated status
+
+    Clinician->>Frontend: Review alert or patient report
+    Frontend->>FollowUp: POST /api/followup-responses or /api/followup-appointments
+    FollowUp->>DB: Store response or appointment
+    FollowUp->>Notify: Notify patient
+    Notify->>DB: Save notification record
+    Notify-->>Frontend: Realtime notification event
+    Frontend-->>Patient: Show response, appointment, or notification
 ```
 
 ## 4.4 System Architecture and Design Considerations
@@ -216,71 +261,143 @@ The context diagram below shows the system boundary and the main external users.
 
 ```mermaid
 flowchart LR
-    Patient[Patient] -->|Submit symptom report| UI[Web Frontend]
-    Clinician[Clinician] -->|Review alerts & patients| UI
-    Admin[Administrator] -->|Manage users/assignments| UI
+    Patient[Patient]
+    Clinician[Clinician]
+    Admin[Administrator]
+    Frontend[Web Frontend]
+    Backend[Backend API]
+    Database[(PostgreSQL Database)]
 
-    UI -->|API requests| API[Backend API]
-    API -->|Read/Write| DB[(PostgreSQL Database)]
+    Patient -->|Submit reports, view status, responses, appointments, notifications| Frontend
+    Clinician -->|Review patients, alerts, tasks, responses, follow-ups| Frontend
+    Admin -->|Manage users, assignments, notifications, metrics| Frontend
 
-    API -->|Return risk/trend/alerts| UI
+    Frontend -->|Send API requests| Backend
+    Backend -->|Return data, decisions, notifications| Frontend
+    Backend -->|Store and retrieve records| Database
 ```
 
 A simple data flow (DFD-style) view is shown below.
 
 ```mermaid
 flowchart TD
-    P1[Patient] --> D1[1. Submit Report Form]
-    D1 --> P2[2. Backend API Receives Report]
-    P2 --> D2[(Database: SymptomReport)]
-    P2 --> P3[3. Risk Classification Rules]
-    P3 --> P4[4. Trend Analysis Rules]
-    P4 --> D3[(Database: Patient Status)]
-    P4 --> P5{5. Alert Needed?}
-    P5 -->|Yes| D4[(Database: Alert)]
-    P5 -->|No| End1[End]
-    D4 --> C1[Clinician Dashboard Shows Alert]
+    A[Patient enters symptoms, vitals, and medication adherence]
+    B[Frontend validates form]
+    C[Backend receives symptom report]
+    D[Read patient context, age, chronic conditions, and active assignment]
+    E[Run risk classification]
+    F[Run trend analysis]
+    G[Update report and patient status]
+    H{Is an alert needed?}
+    I[Create alert record]
+    M[Create persistent notifications]
+    J[Show updated status to patient]
+    K[Show alert on clinician dashboard]
+    N[Clinician sends response or schedules follow-up]
+    O[Store response or appointment]
+    P[Notify patient about clinician action]
+    L[(Database)]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    C --> L
+    D --> L
+    G --> L
+    H -->|Yes| I
+    I --> M
+    I --> L
+    M --> L
+    M --> J
+    M --> K
+    H -->|No| J
+    I --> K
+    K --> N
+    N --> O
+    O --> L
+    O --> P
+    P --> L
+    P --> J
+    G --> J
 ```
 
 ### 4.4.2 Architectural Design
 
 The platform uses a typical web architecture with a separate frontend and backend:
 
-- The **frontend** is a React application with pages for each role.
+- The **frontend** is a React application with pages for each role, shared components, a notification bell, and follow-up UI.
 - The **backend** is a FastAPI application that exposes REST endpoints.
-- The **service layer** contains the business logic and clinical rules.
-- The **database** stores users, patients, clinicians, assignments, symptom reports, alerts, and metrics.
+- The **service layer** contains the business logic, clinical rules, notification handling, and follow-up workflow.
+- The **database** stores users, patients, clinicians, assignments, symptom reports, alerts, tasks, follow-up responses, follow-up appointments, notifications, push subscriptions, audit logs, and metrics.
 
 High-level architecture overview:
 
 ```mermaid
-graph TB
-    subgraph Client["Frontend Layer (React)"]
-        LP["Login Page"]
-        SP["Signup Page"]
-        PD["Patient Dashboard"]
-        CD["Clinician Dashboard"]
-        AD["Admin Dashboard"]
+flowchart TB
+    subgraph ClientLayer["Frontend Layer - React"]
+        Login[Login and Signup Pages]
+        Dashboards[Patient, Clinician, and Admin Dashboards]
+        FollowUpUI[Follow-Up and Response UI]
+        NotificationUI[Notification Bell and Realtime Updates]
+        UIComponents[Shared UI Components]
+        Contexts[Auth, Toast, and Notification Contexts]
     end
 
-    subgraph API["Backend Layer (FastAPI)"]
-        Routes["Routes Layer"]
-        Controllers["Controllers"]
-        Services["Services"]
-        Schemas["Schemas"]
+    subgraph APILayer["Backend Layer - FastAPI"]
+        Routes[Routes]
+        Controllers[Controllers]
+        Schemas[Schemas]
+        Services[Services]
+        Realtime[Realtime and Push Delivery]
     end
 
-    subgraph DB["Data Layer"]
-        Prisma["Prisma ORM"]
-        PostgreSQL["PostgreSQL"]
+    subgraph IntelligenceLayer["Clinical Intelligence Layer"]
+        RiskService[Risk Classification]
+        TrendService[Trend Analysis]
+        AlertService[Alert Generation]
+        FollowUpService[Follow-Up Response and Appointment Services]
+        NotificationService[Notification Service]
     end
 
-    Client -->|HTTP| Routes
+    subgraph DataLayer["Data Layer"]
+        Prisma[Prisma ORM]
+        Database[(PostgreSQL Database)]
+    end
+
+    Login --> Contexts
+    Dashboards --> UIComponents
+    Dashboards --> Contexts
+    FollowUpUI --> Contexts
+    NotificationUI --> Contexts
+
+    Contexts --> Routes
+    UIComponents --> Routes
+    FollowUpUI --> Routes
+    NotificationUI --> Routes
+
     Routes --> Controllers
-    Controllers --> Services
+    Routes --> Services
     Controllers --> Schemas
+    Controllers --> Services
+
+    Services --> RiskService
+    Services --> TrendService
+    Services --> AlertService
+    Services --> FollowUpService
+    Services --> NotificationService
+    NotificationService --> Realtime
+
     Services --> Prisma
-    Prisma --> PostgreSQL
+    RiskService --> Prisma
+    TrendService --> Prisma
+    AlertService --> Prisma
+    FollowUpService --> Prisma
+    NotificationService --> Prisma
+    Prisma --> Database
 ```
 
 ### 4.4.3 Physical Design
@@ -288,10 +405,10 @@ graph TB
 The physical design describes where the system runs:
 
 - The frontend runs in a web browser on the user device (patient/clinician/admin).
-- The backend runs on a server (or local machine during development).
+- The backend runs on a server or local machine during development.
 - The database runs as a PostgreSQL instance.
 
-In development, the frontend typically runs on a local dev server and sends requests to the backend API address (for example `http://localhost:8000`).
+In development, the frontend typically runs on a local dev server and sends requests to the backend API address, for example `http://localhost:8000`.
 
 ### 4.4.4 Database Design
 
@@ -303,6 +420,12 @@ The database design is defined using Prisma in `schema.prisma`. The main entitie
 - `Assignment`: links a clinician to a patient and stores care context
 - `SymptomReport`: structured symptom report plus computed risk results
 - `Alert`: alert records triggered by high risk or worsening trends
+- `Task`: follow-up work item, often created from an alert
+- `FollowUpResponse`: clinician guidance linked to a symptom report
+- `FollowUpAppointment`: scheduled patient-clinician follow-up
+- `Notification`: persistent in-app notification record
+- `PushSubscription`: browser push subscription data
+- `AuditLog`: user activity record
 - `PerformanceMetric`: system performance logs
 
 Entity Relationship Diagram (based on `schema.prisma`):
@@ -311,11 +434,28 @@ Entity Relationship Diagram (based on `schema.prisma`):
 erDiagram
     USER ||--o| PATIENT : has
     USER ||--o| CLINICIAN : has
+    USER ||--o{ NOTIFICATION : receives
+    USER ||--o{ PUSH_SUBSCRIPTION : owns
+    USER ||--o{ AUDIT_LOG : creates
+    USER ||--o{ ALERT : acts_on
+
     PATIENT ||--o{ ASSIGNMENT : assigned
     CLINICIAN ||--o{ ASSIGNMENT : manages
     PATIENT ||--o{ SYMPTOM_REPORT : submits
     PATIENT ||--o{ ALERT : receives
+    CLINICIAN ||--o{ ALERT : assigned
     SYMPTOM_REPORT ||--o{ ALERT : triggers
+
+    PATIENT ||--o{ TASK : has
+    CLINICIAN ||--o{ TASK : assigned
+    ALERT ||--o{ TASK : creates
+
+    SYMPTOM_REPORT ||--o{ FOLLOW_UP_RESPONSE : receives
+    PATIENT ||--o{ FOLLOW_UP_RESPONSE : has
+    CLINICIAN ||--o{ FOLLOW_UP_RESPONSE : writes
+
+    PATIENT ||--o{ FOLLOW_UP_APPOINTMENT : has
+    CLINICIAN ||--o{ FOLLOW_UP_APPOINTMENT : schedules
 
     USER {
         Int id PK
@@ -327,10 +467,10 @@ erDiagram
     PATIENT {
         Int id PK
         Int userId FK
-        String emergencyContact
         String chronicConditions
         RiskLevel currentRiskLevel
         TrendStatus currentTrendStatus
+        DateTime lastReportTime
     }
 
     CLINICIAN {
@@ -351,8 +491,10 @@ erDiagram
     SYMPTOM_REPORT {
         Int id PK
         Int patientId FK
+        String symptoms
         Severity severity
         Frequency frequency
+        Boolean medicationAdherent
         RiskLevel riskLevel
         Float riskScore
     }
@@ -361,9 +503,48 @@ erDiagram
         Int id PK
         Int patientId FK
         Int symptomReportId FK
+        Int assignedToClinicianId FK
         AlertPriority priority
         String alertType
+        AlertStatus status
         Boolean isRead
+    }
+
+    TASK {
+        Int id PK
+        Int patientId FK
+        Int assignedClinicianId FK
+        Int createdFromAlertId FK
+        String title
+        TaskStatus status
+    }
+
+    FOLLOW_UP_RESPONSE {
+        Int id PK
+        Int symptomReportId FK
+        Int clinicianId FK
+        Int patientId FK
+        String message
+        Boolean actionRequired
+    }
+
+    FOLLOW_UP_APPOINTMENT {
+        Int id PK
+        Int patientId FK
+        Int clinicianId FK
+        DateTime scheduledAt
+        String reason
+        String status
+    }
+
+    NOTIFICATION {
+        Int id PK
+        Int userId FK
+        String title
+        String message
+        String type
+        Boolean isRead
+        String link
     }
 ```
 
@@ -373,17 +554,19 @@ erDiagram
 
 The frontend uses a sidebar navigation layout. Menu items change based on the user role:
 
-- Patients see options related to submitting reports and viewing their status.
-- Clinicians see options related to patients, alerts, and trends.
-- Admins see options related to user management, assignments, and system monitoring.
+- Patients see options related to submitting reports, viewing their status, viewing clinician responses, and viewing scheduled follow-ups.
+- Clinicians see options related to patients, alerts, trends, tasks, responses, and follow-up appointments.
+- Admins see options related to user management, assignments, alerts, and system monitoring.
 
 #### 4.4.5.2 Input Design
 
 Main inputs in the system include:
 
 - Signup/login forms (email, password, role information).
-- Symptom report form (symptoms, severity, duration, frequency, and optional vitals).
+- Symptom report form (symptoms, severity, duration, frequency, medication adherence, and optional vitals).
 - Clinician/admin forms for creating assignments or updating user records.
+- Clinician response forms for sending follow-up guidance.
+- Follow-up appointment forms for scheduling patient appointments.
 
 Input validation is done on both sides:
 
@@ -395,7 +578,9 @@ Input validation is done on both sides:
 Main outputs in the system include:
 
 - Dashboards showing patient risk level and trend status.
-- Alerts list showing priority, type, and clinical explanation.
+- Alerts list showing priority, type, workflow status, and clinical explanation.
+- Follow-up cards showing appointments and clinician responses.
+- In-app notifications shown through the notification bell.
 - Charts/visuals for risk score over time.
 - Basic metrics for system monitoring.
 
@@ -417,8 +602,8 @@ The platform includes basic security design considerations.
 - Authentication tokens should be managed securely and invalid sessions should be handled correctly.
 - Access control should be enforced consistently for each role (patient/clinician/admin).
 - Logs and metrics should not expose sensitive patient data.
+- Notifications and follow-up records should only be visible to the correct patient, clinician, or administrator.
 
 ## 4.5 Conclusion
 
-This chapter presented the analysis and design of the telemedicine platform. It described the main requirements, system components, and the full-stack architecture used to implement remote symptom monitoring. The included diagrams show how user actions flow through the frontend and backend, how the clinical intelligence layer produces risk and trend results, and how alerts are generated and stored. The next phase of the project (implementation and results) builds directly on this design.
-
+This chapter presented the analysis and design of the telemedicine platform. It described the main requirements, system components, and the full-stack architecture used to implement remote symptom monitoring. The included diagrams show how user actions flow through the frontend and backend, how the clinical intelligence layer produces risk and trend results, how alerts are generated and stored, and how clinician follow-up actions and notifications continue the care workflow after a report has been reviewed. The next phase of the project (implementation and results) builds directly on this design.

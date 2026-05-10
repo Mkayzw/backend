@@ -1,11 +1,9 @@
 import { useAuth } from '../context/AuthContext';
-import { useNotifications } from '../context/NotificationContext';
-import { Bell, Search } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 import './TopBar.css';
 
 export default function TopBar({ title, subtitle }) {
   const { user } = useAuth();
-  const { counts } = useNotifications();
 
   const roleLabels = {
     PATIENT: 'Patient Portal',
@@ -22,12 +20,7 @@ export default function TopBar({ title, subtitle }) {
         </div>
       </div>
       <div className="topbar__right">
-        <div className="topbar__notif">
-          <Bell size={18} />
-          {counts.unreadAlerts > 0 && (
-            <span className="topbar__notif-badge">{counts.unreadAlerts}</span>
-          )}
-        </div>
+        <NotificationBell />
         <span className="topbar__role-badge">{roleLabels[user?.role] || ''}</span>
       </div>
     </header>

@@ -9,6 +9,7 @@ from app.services.auth import checkDataAccess
 from app.services.clinical_workflow import apply_triage_action
 from app.services.push_notifications import send_push_to_user_ids
 from app.services.realtime_broker import broker
+from app.services.notification_service import createNotification
 
 
 ALERT_INCLUDE = {
@@ -126,6 +127,49 @@ async def generateAlert(
                 },
             )
         )
+    except Exception:
+        pass
+
+    # Persist internal notifications for the care team + the patient
+    try:
+        notif_type = (
+            "HIGH_RISK_ALERT" if str(getattr(alert, "alertType", "")) == "HIGH_RISK"
+            else "WORSENING_TREND"
+        )
+        notif_title = (
+            "HIGH RISK alert" if notif_type == "HIGH_RISK_ALERT"
+            else "Worsening trend detected"
+        )
+        notif_body = str(getattr(alert, "message", ""))[:500]
+
+        for uid in owner_user_ids:
+            try:
+                await createNotification(
+                    userId=int(uid),
+                    title=notif_title,
+                    message=notif_body,
+                    type=notif_type,
+                    link="/clinician/alerts",
+                )
+            except Exception:
+                continue
+
+        # Notify patient too (visibility into their own clinical signal)
+        patient_user = getattr(getattr(alert, "patient", None), "user", None)
+        if patient_user is not None and getattr(patient_user, "id", None) is not None:
+            try:
+                await createNotification(
+                    userId=int(patient_user.id),
+                    title=notif_title,
+                    message=(
+                        "Your clinician has been notified about a change in your "
+                        "condition. Please follow any guidance you receive."
+                    ),
+                    type=notif_type,
+                    link="/patient",
+                )
+            except Exception:
+                pass
     except Exception:
         pass
 

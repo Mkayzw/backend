@@ -82,6 +82,14 @@ enum CareContext {
   POST_SURGERY_RECOVERY
   CHRONIC_DISEASE_MONITORING
   INFECTION_FOLLOWUP
+  CARDIAC_FOLLOWUP
+  DIABETES_MANAGEMENT
+  HYPERTENSION_MONITORING
+  MATERNAL_CARE
+  MENTAL_HEALTH_FOLLOWUP
+  PEDIATRIC_FOLLOWUP
+  ONCOLOGY_FOLLOWUP
+  RENAL_FOLLOWUP
   GENERAL_REVIEW
 }
 
@@ -103,6 +111,7 @@ model User {
   pushSubscriptions PushSubscription[]
   auditLogs AuditLog[]
   alertActions Alert[] @relation("AlertLastActor")
+  notifications Notification[]
 }
 
 // ─────────────────────────────────────────────
@@ -135,6 +144,8 @@ model Patient {
   symptomReports SymptomReport[]
   alerts         Alert[]
   tasks          Task[]
+  followUpResponses    FollowUpResponse[]
+  followUpAppointments FollowUpAppointment[]
 }
 
 // ─────────────────────────────────────────────
@@ -151,6 +162,8 @@ model Clinician {
   assignments      Assignment[]
   alertAssignments Alert[]      @relation("AlertAssignee")
   tasks            Task[]
+  followUpResponses    FollowUpResponse[]
+  followUpAppointments FollowUpAppointment[]
 }
 
 // ─────────────────────────────────────────────
@@ -202,6 +215,7 @@ model SymptomReport {
 
   patient Patient  @relation(fields: [patientId], references: [id])
   alerts  Alert[]
+  followUpResponses FollowUpResponse[]
 }
 
 // ─────────────────────────────────────────────
@@ -318,4 +332,71 @@ model PerformanceMetric {
   errorMessage   String?
   timestamp      DateTime @default(now())
   userId         Int?
+}
+
+// ─────────────────────────────────────────────
+//  Clinician follow-up response to a symptom report
+// ─────────────────────────────────────────────
+
+model FollowUpResponse {
+  id              Int      @id @default(autoincrement())
+  symptomReportId Int
+  clinicianId     Int
+  patientId       Int
+  message         String
+  actionRequired  Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  symptomReport SymptomReport @relation(fields: [symptomReportId], references: [id])
+  clinician     Clinician     @relation(fields: [clinicianId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+
+  @@index([symptomReportId])
+  @@index([patientId])
+  @@index([clinicianId])
+}
+
+// ─────────────────────────────────────────────
+//  Follow-up appointment scheduled by a clinician
+// ─────────────────────────────────────────────
+
+model FollowUpAppointment {
+  id          Int      @id @default(autoincrement())
+  patientId   Int
+  clinicianId Int
+  scheduledAt DateTime
+  reason      String
+  status      String   @default("SCHEDULED") // SCHEDULED | COMPLETED | CANCELLED | MISSED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  patient   Patient   @relation(fields: [patientId], references: [id])
+  clinician Clinician @relation(fields: [clinicianId], references: [id])
+
+  @@index([patientId])
+  @@index([clinicianId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────
+//  Internal notification / reminder log
+// ─────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      String   // HIGH_RISK_ALERT | WORSENING_TREND | FOLLOW_UP_SCHEDULED |
+                    // FOLLOW_UP_RESPONSE | MEDICATION_CHECK_IN | SYSTEM_MESSAGE
+  isRead    Boolean  @default(false)
+  link      String?  // optional deep-link path (e.g. /clinician/alerts)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
 }

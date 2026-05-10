@@ -5,8 +5,8 @@ graph TB
     subgraph Pages["Pages"]
         LP["LoginPage"]
         SP["SignupPage"]
-        PD["PatientDashboard"]
-        CD["ClinicianDashboard"]
+        PD["PatientDashboard<br/>reports, responses, appointments"]
+        CD["ClinicianDashboard<br/>alerts, tasks, follow-ups"]
         AD["AdminDashboard"]
     end
 
@@ -14,17 +14,20 @@ graph TB
         Sidebar["Sidebar<br/>Navigation"]
         TopBar["TopBar<br/>Header"]
         AppLayout["AppLayout<br/>Container"]
+        NB["NotificationBell"]
     end
 
     subgraph Core["Core Components"]
         PR["ProtectedRoute<br/>Auth Guard"]
         LS["LoadingSpinner"]
         Modal["Modal<br/>Dialog"]
-        Toast["ToastContainer<br/>Notifications"]
+        Toast["ToastContainer"]
+        Empty["EmptyState"]
+        Tooltip["Tooltip"]
     end
 
     subgraph Display["Display Components"]
-        AC["AlertCard"]
+        AC["AlertCard<br/>triage, task, response, schedule actions"]
         SC["StatCard"]
         RB["RiskBadge"]
         TI["TrendIndicator"]
@@ -33,7 +36,7 @@ graph TB
     subgraph Context["Context Providers"]
         Auth["AuthContext"]
         Toast_Ctx["ToastContext"]
-        Notif["NotificationContext"]
+        Notif["NotificationContext<br/>API + realtime stream"]
     end
 
     subgraph API["API Services"]
@@ -45,6 +48,10 @@ graph TB
         MetricsAPI["metrics.js"]
         SymptomAPI["symptomReports.js"]
         AssignmentAPI["assignments.js"]
+        TaskAPI["tasks.js"]
+        FollowRespAPI["followupResponses.js"]
+        FollowApptAPI["followupAppointments.js"]
+        NotificationAPI["notifications.js"]
     end
 
     LP --> Auth
@@ -52,22 +59,34 @@ graph TB
     PD --> PR
     CD --> PR
     AD --> PR
-    
+
     AppLayout --> Sidebar
     AppLayout --> TopBar
+    TopBar --> NB
+    NB --> Notif
+
     PD --> Toast
     CD --> Toast
     AD --> Toast
-    
+
     Pages --> Display
+    Pages --> Core
     Display --> AC
     Display --> RB
     Display --> TI
-    
+
+    PD --> FollowRespAPI
+    PD --> FollowApptAPI
+    CD --> FollowRespAPI
+    CD --> FollowApptAPI
+    CD --> TaskAPI
     Pages --> API
+
     PR --> Auth
     Toast --> Toast_Ctx
-    
+    NB --> NotificationAPI
+    Notif --> NotificationAPI
+
     style Pages fill:#e3f2fd
     style Layout fill:#f1f8e9
     style Core fill:#fce4ec

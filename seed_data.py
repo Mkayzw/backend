@@ -28,7 +28,7 @@ import asyncio
 import json
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 # ── Use the app's shared Prisma instance so the intelligence layer works ──
@@ -369,11 +369,39 @@ def chronological_timestamps(n: int, span_days: int = 90) -> List[datetime]:
 async def clear_database():
     print("Clearing existing data...")
     await db.performancemetric.delete_many()
+    # New: notifications, follow-up responses & appointments must be cleared
+    # before their parent tables (User / SymptomReport / Patient / Clinician).
+    try:
+        await db.notification.delete_many()
+    except Exception:
+        pass  # table may not exist yet on first run
+    try:
+        await db.followupresponse.delete_many()
+    except Exception:
+        pass
+    try:
+        await db.followupappointment.delete_many()
+    except Exception:
+        pass
+    # Tasks reference alerts/patients/clinicians — clear before alerts/patients.
+    try:
+        await db.task.delete_many()
+    except Exception:
+        pass
     await db.alert.delete_many()
     await db.symptomreport.delete_many()
     await db.assignment.delete_many()
     await db.patient.delete_many()
     await db.clinician.delete_many()
+    # Push subs / audit logs reference users.
+    try:
+        await db.pushsubscription.delete_many()
+    except Exception:
+        pass
+    try:
+        await db.auditlog.delete_many()
+    except Exception:
+        pass
     await db.user.delete_many()
     print("  ✓ Database cleared")
 
@@ -673,7 +701,7 @@ async def seed_symptom_reports(patients: List, patient_profiles: List) -> dict:
                 chronicConditions=conditions,
             )
 
-            trend_status, _ = await analyzeTrend(patient.id, severity)
+            trend_status, _ = await analyzeTrend(patient.id, risk_score)
 
             # Update report with computed risk data
             updated = await db.symptomreport.update(
@@ -715,6 +743,225 @@ async def seed_symptom_reports(patients: List, patient_profiles: List) -> dict:
     print(f"  ✓ {len(all_reports)} symptom reports")
     print(f"  ✓ {total_high} HIGH_RISK alerts + {total_worsen} WORSENING_TREND alerts")
     return {"reports": all_reports, "alerts": all_alerts}
+
+
+CLINICIAN_REPLY_TEMPLATES = [
+    ("Continue current medication and monitor symptoms for the next 24 hours. Report back if anything worsens.", False),
+    ("Please increase your fluid intake and rest. Symptoms appear consistent with mild recovery.", False),
+    ("These readings are within your usual range. No change to your treatment plan needed.", False),
+    ("Please visit the clinic within 48 hours so we can review your condition in person.", True),
+    ("High-risk symptoms detected. Please go to the nearest emergency department immediately.", True),
+    ("Take your prescribed inhaler as needed and avoid known triggers (dust, smoke, exertion).", False),
+    ("Book a follow-up so we can adjust your medication based on these new readings.", True),
+    ("Glucose readings look stable. Continue your current insulin regimen and dietary plan.", False),
+    ("Blood pressure is trending up. Please measure twice daily and avoid added salt.", True),
+    ("Surgical site looks normal based on your description. Continue wound care as instructed.", False),
+]
+
+NOTIFICATION_TEMPLATES = {
+    "MEDICATION_CHECK_IN": [
+        ("Medication reminder", "Time to take your medication. Tap to log adherence."),
+        ("Daily check-in", "Don't forget to record today's vitals and symptoms."),
+        ("Medication reminder", "Reminder: take your evening dose with food."),
+    ],
+    "SYSTEM_MESSAGE": [
+        ("Welcome to the platform", "Your account is set up. Submit symptom reports any time and your clinician will respond."),
+        ("Profile incomplete", "Add your chronic conditions and emergency contact for better risk classification."),
+        ("Privacy reminder", "Your health data is encrypted and only visible to your assigned clinicians."),
+    ],
+}
+
+
+async def seed_followup_responses_and_appointments(test_data: dict) -> dict:
+    """
+    Create realistic clinician follow-up responses and scheduled appointments
+    for the deterministic test accounts so the demo flow has data to show.
+    """
+    print("Seeding clinician follow-up responses & appointments...")
+
+    responses_created = 0
+    appointments_created = 0
+
+    # Build a quick lookup of (clinicianId -> list[patientIds]) from active assignments
+    assignments = await db.assignment.find_many(where={"status": "ACTIVE"})
+    clinician_patients: dict[int, list[int]] = {}
+    for a in assignments:
+        clinician_patients.setdefault(a.clinicianId, []).append(a.patientId)
+
+    # ── 1. Follow-up responses on recent symptom reports ──
+    for clinician_id, patient_ids in clinician_patients.items():
+        for patient_id in patient_ids:
+            recent_reports = await db.symptomreport.find_many(
+                where={"patientId": patient_id},
+                order={"createdAt": "desc"},
+                take=5,
+            )
+            # Respond to ~half of recent reports
+            for report in recent_reports:
+                if random.random() > 0.5:
+                    continue
+                # Bias action_required toward HIGH-risk reports
+                if str(report.riskLevel) == "HIGH":
+                    msg, action_required = random.choice([t for t in CLINICIAN_REPLY_TEMPLATES if t[1]])
+                else:
+                    msg, action_required = random.choice(CLINICIAN_REPLY_TEMPLATES)
+
+                now_utc = datetime.now(timezone.utc)
+                report_created = report.createdAt
+                if report_created.tzinfo is None:
+                    report_created = report_created.replace(tzinfo=timezone.utc)
+                created_at = report_created + timedelta(
+                    hours=random.randint(1, 36),
+                    minutes=random.randint(0, 59),
+                )
+                if created_at > now_utc:
+                    created_at = now_utc
+
+                await db.followupresponse.create(
+                    data={
+                        "symptomReportId": report.id,
+                        "clinicianId":     clinician_id,
+                        "patientId":       patient_id,
+                        "message":         msg,
+                        "actionRequired":  bool(action_required),
+                        "createdAt":       created_at,
+                    }
+                )
+                responses_created += 1
+
+                # Mirror in patient's notification log
+                patient_rec = await db.patient.find_unique(where={"id": patient_id})
+                if patient_rec and patient_rec.userId:
+                    await db.notification.create(
+                        data={
+                            "userId":    patient_rec.userId,
+                            "title":     "Clinician response received",
+                            "message":   "Your clinician responded to your symptom report"
+                                         + (" — action required." if action_required else "."),
+                            "type":      "FOLLOW_UP_RESPONSE",
+                            "isRead":    random.random() < 0.4,
+                            "link":      "/patient/history",
+                            "createdAt": created_at,
+                        }
+                    )
+
+    # ── 2. Follow-up appointments (mix of upcoming, completed, missed, cancelled) ──
+    for clinician_id, patient_ids in clinician_patients.items():
+        for patient_id in patient_ids:
+            # 1–2 appointments per relationship
+            for _ in range(random.randint(1, 2)):
+                # Past or future?
+                now_utc = datetime.now(timezone.utc)
+                is_future = random.random() < 0.55
+                if is_future:
+                    scheduled_at = now_utc + timedelta(
+                        days=random.randint(1, 21),
+                        hours=random.randint(0, 23),
+                    )
+                    status = "SCHEDULED"
+                else:
+                    scheduled_at = now_utc - timedelta(
+                        days=random.randint(1, 60),
+                        hours=random.randint(0, 23),
+                    )
+                    status = random.choices(
+                        ["COMPLETED", "MISSED", "CANCELLED"],
+                        weights=[0.65, 0.20, 0.15],
+                    )[0]
+
+                reasons = [
+                    "Routine clinical review",
+                    "Medication adjustment review",
+                    "Follow-up after worsening trend",
+                    "Vital signs reassessment",
+                    "Post-flare-up review",
+                    "Glycaemic control check",
+                    "Blood pressure review",
+                    "Symptom recheck",
+                ]
+
+                created_at = min(scheduled_at, now_utc) - timedelta(
+                    days=random.randint(1, 10)
+                )
+
+                await db.followupappointment.create(
+                    data={
+                        "patientId":   patient_id,
+                        "clinicianId": clinician_id,
+                        "scheduledAt": scheduled_at,
+                        "reason":      random.choice(reasons),
+                        "status":      status,
+                        "createdAt":   created_at,
+                        "updatedAt":   now_utc,
+                    }
+                )
+                appointments_created += 1
+
+                # Notify the patient about scheduled appointments
+                if status == "SCHEDULED":
+                    patient_rec = await db.patient.find_unique(where={"id": patient_id})
+                    if patient_rec and patient_rec.userId:
+                        await db.notification.create(
+                            data={
+                                "userId":    patient_rec.userId,
+                                "title":     "Follow-up scheduled",
+                                "message":   f"A follow-up has been scheduled for "
+                                             f"{scheduled_at.strftime('%b %d, %Y at %H:%M')}.",
+                                "type":      "FOLLOW_UP_SCHEDULED",
+                                "isRead":    random.random() < 0.3,
+                                "link":      "/patient",
+                                "createdAt": created_at,
+                            }
+                        )
+
+    print(f"  ✓ {responses_created} clinician responses, {appointments_created} appointments")
+    return {"responses": responses_created, "appointments": appointments_created}
+
+
+async def seed_general_notifications(users: dict, test_data: dict) -> int:
+    """
+    Sprinkle generic medication reminders + system messages across all users
+    so the notification bell is meaningful in the demo.
+    """
+    print("Seeding general notifications (reminders, system messages)...")
+    count = 0
+
+    all_users = (
+        users["patients"]
+        + users["clinicians"]
+        + users["admins"]
+        + test_data["users"]
+    )
+
+    for user in all_users:
+        # 1–3 generic notifications per user
+        for _ in range(random.randint(1, 3)):
+            ntype = random.choices(
+                ["MEDICATION_CHECK_IN", "SYSTEM_MESSAGE"],
+                weights=[0.6, 0.4],
+            )[0]
+            title, message = random.choice(NOTIFICATION_TEMPLATES[ntype])
+
+            # Patients get medication reminders; others mostly get system messages
+            if user.role != "PATIENT" and ntype == "MEDICATION_CHECK_IN":
+                ntype = "SYSTEM_MESSAGE"
+                title, message = random.choice(NOTIFICATION_TEMPLATES["SYSTEM_MESSAGE"])
+
+            await db.notification.create(
+                data={
+                    "userId":    user.id,
+                    "title":     title,
+                    "message":   message,
+                    "type":      ntype,
+                    "isRead":    random.random() < 0.5,
+                    "link":      None,
+                    "createdAt": past_ts(14),
+                }
+            )
+            count += 1
+
+    print(f"  ✓ {count} general notifications")
+    return count
 
 
 async def seed_performance_metrics(users: dict) -> List:
@@ -788,6 +1035,10 @@ async def main():
         print()
         intelligence = await seed_symptom_reports(patients, PATIENT_PROFILES)
         print()
+        followup_stats = await seed_followup_responses_and_appointments(test_data)
+        print()
+        general_notifs = await seed_general_notifications(users, test_data)
+        print()
         metrics = await seed_performance_metrics(users)
         print()
 
@@ -805,6 +1056,9 @@ async def main():
         print(f"  Assignments:      {len(assignments)}")
         print(f"  Symptom reports:  {len(intelligence['reports'])}  (scored by real engine)")
         print(f"  Alerts generated: {alerts_total}  (logic-derived, not random)")
+        print(f"  Follow-up replies:{followup_stats['responses']}")
+        print(f"  Follow-up appts:  {followup_stats['appointments']}")
+        print(f"  Notifications:    {general_notifs}+ (plus alert-driven & follow-up notifs)")
         print(f"  Perf metrics:     {len(metrics)}")
         print("=" * 62)
         print()

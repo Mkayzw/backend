@@ -6,17 +6,21 @@ import { useNotifications } from '../../context/NotificationContext';
 import { dashboardAPI } from '../../api/dashboard';
 import { alertsAPI } from '../../api/alerts';
 import { tasksAPI } from '../../api/tasks';
+import { followupResponsesAPI } from '../../api/followupResponses';
+import { followupAppointmentsAPI } from '../../api/followupAppointments';
 import TopBar from '../../components/TopBar';
 import StatCard from '../../components/StatCard';
 import RiskBadge from '../../components/RiskBadge';
 import TrendIndicator from '../../components/TrendIndicator';
 import AlertCard from '../../components/AlertCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import Modal from '../../components/Modal';
 import PushAlertsButton from '../../components/PushAlertsButton';
 import { startRealtimeStream } from '../../realtime/sse';
 import {
   ShieldAlert, TrendingDown, Bell, FileHeart, Users, Activity,
-  ChevronDown, ChevronUp, Clock, Info, ClipboardList, CheckCircle2, TimerReset
+  ChevronDown, ChevronUp, Clock, Info, ClipboardList, CheckCircle2, TimerReset,
+  CalendarPlus, MessageSquare, Send
 } from 'lucide-react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -29,9 +33,25 @@ const CLINICIAN_TABS = [
   { key: 'patients', path: '/clinician/patients' },
   { key: 'alerts', path: '/clinician/alerts' },
   { key: 'tasks', path: '/clinician/tasks' },
+  { key: 'followups', path: '/clinician/followups' },
   { key: 'trends', path: '/clinician/trends' },
 ];
 const CLINICIAN_PATH_TO_TAB = Object.fromEntries(CLINICIAN_TABS.map(t => [t.path, t.key]));
+
+const PIE_COLORS = ['#27AE60', '#2D9CDB', '#9B51E0'];
+
+// Calculate age from dateOfBirth
+function calculateAge(dateOfBirth) {
+  if (!dateOfBirth) return null;
+  const today = new Date();
+  const dob = new Date(dateOfBirth);
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age--;
+  }
+  return age;
+}
 
 export default function ClinicianDashboard() {
   const { user } = useAuth();
@@ -50,6 +70,17 @@ export default function ClinicianDashboard() {
   const [trendLoading, setTrendLoading] = useState(false);
   const [alertFilter, setAlertFilter] = useState('all');
   const [taskFilter, setTaskFilter] = useState('all');
+
+  // Follow-up workflow state
+  const [appointments, setAppointments] = useState([]);
+  const [respondModal, setRespondModal] = useState({ open: false, alert: null });
+  const [respondMessage, setRespondMessage] = useState('');
+  const [respondActionRequired, setRespondActionRequired] = useState(false);
+  const [respondSubmitting, setRespondSubmitting] = useState(false);
+  const [scheduleModal, setScheduleModal] = useState({ open: false, alert: null });
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [scheduleReason, setScheduleReason] = useState('');
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
 
   const handleTabChange = (tabKey) => {
     const tabPath = tabKey === 'patients' ? '/clinician' : `/clinician/${tabKey}`;
@@ -114,8 +145,89 @@ export default function ClinicianDashboard() {
       const tasksData = await tasksAPI.getAll();
       setTasks(tasksData);
     } catch (err) { toastError('Failed to load tasks: ' + (err.message || 'Unknown error')); }
+    try {
+      const appts = await followupAppointmentsAPI.list();
+      setAppointments(appts);
+    } catch (err) { toastError('Failed to load follow-ups: ' + (err.message || 'Unknown error')); }
     setLoading(false);
   }
+
+  // ── Follow-up response (clinician replies to a symptom report) ──
+  const openRespondModal = (alert) => {
+    if (!alert?.symptomReportId) {
+      toastError('This alert is not linked to a symptom report');
+      return;
+    }
+    setRespondModal({ open: true, alert });
+    setRespondMessage('');
+    setRespondActionRequired(alert.priority === 'HIGH');
+  };
+
+  const submitFollowUpResponse = async (e) => {
+    e.preventDefault();
+    if (!respondModal.alert || !respondMessage.trim()) return;
+    setRespondSubmitting(true);
+    try {
+      await followupResponsesAPI.create({
+        symptomReportId: respondModal.alert.symptomReportId,
+        message: respondMessage.trim(),
+        actionRequired: respondActionRequired,
+      });
+      success('Response sent to patient');
+      setRespondModal({ open: false, alert: null });
+      setRespondMessage('');
+      setRespondActionRequired(false);
+    } catch (err) {
+      toastError('Failed to send response: ' + (err.message || 'Unknown error'));
+    } finally {
+      setRespondSubmitting(false);
+    }
+  };
+
+  // ── Schedule follow-up appointment ──
+  const openScheduleModal = (alert) => {
+    if (!alert?.patientId) {
+      toastError('Missing patient on alert');
+      return;
+    }
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    tomorrow.setMinutes(0, 0, 0);
+    setScheduleModal({ open: true, alert });
+    setScheduleAt(tomorrow.toISOString().slice(0, 16));
+    setScheduleReason(`Follow-up after ${alert.alertType?.replace(/_/g, ' ').toLowerCase() || 'alert'}`);
+  };
+
+  const submitSchedule = async (e) => {
+    e.preventDefault();
+    if (!scheduleModal.alert || !scheduleAt || !scheduleReason.trim()) return;
+    setScheduleSubmitting(true);
+    try {
+      const created = await followupAppointmentsAPI.create({
+        patientId: scheduleModal.alert.patientId,
+        scheduledAt: new Date(scheduleAt).toISOString(),
+        reason: scheduleReason.trim(),
+      });
+      setAppointments(prev => [created, ...prev]);
+      success('Follow-up scheduled');
+      setScheduleModal({ open: false, alert: null });
+      setScheduleAt('');
+      setScheduleReason('');
+    } catch (err) {
+      toastError('Failed to schedule: ' + (err.message || 'Unknown error'));
+    } finally {
+      setScheduleSubmitting(false);
+    }
+  };
+
+  const updateAppointmentStatus = async (appointmentId, status) => {
+    try {
+      const updated = await followupAppointmentsAPI.update(appointmentId, { status });
+      setAppointments(prev => prev.map(a => (a.id === appointmentId ? updated : a)));
+      success(`Appointment ${status.toLowerCase()}`);
+    } catch (err) {
+      toastError('Failed to update appointment: ' + (err.message || 'Unknown error'));
+    }
+  };
 
   const loadTrend = async (patientId) => {
     if (expandedPatient === patientId) {
@@ -305,6 +417,12 @@ export default function ClinicianDashboard() {
               <span className="tab-badge">{tasks.filter((task) => ['OPEN', 'IN_PROGRESS'].includes(task.status)).length}</span>
             )}
           </button>
+          <button className={`tab ${activeTab === 'followups' ? 'active' : ''}`} onClick={() => handleTabChange('followups')}>
+            <CalendarPlus size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Follow-Ups
+            {appointments.filter(a => a.status === 'SCHEDULED').length > 0 && (
+              <span className="tab-badge">{appointments.filter(a => a.status === 'SCHEDULED').length}</span>
+            )}
+          </button>
           <button className={`tab ${activeTab === 'trends' ? 'active' : ''}`} onClick={() => handleTabChange('trends')}>
             <Activity size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Trend Analysis
           </button>
@@ -399,9 +517,9 @@ export default function ClinicianDashboard() {
 
                           <div className="trend-info-grid" style={{ marginTop: 12 }}>
                             <div className="trend-info-card">
-                              <span className="trend-info-label">DOB / Gender</span>
+                              <span className="trend-info-label">Age / Gender</span>
                               <span className="trend-info-value">
-                                {trendData.dateOfBirth ? new Date(trendData.dateOfBirth).toLocaleDateString() : 'N/A'} · {trendData.gender || 'N/A'}
+                                {calculateAge(trendData.dateOfBirth) ? `${calculateAge(trendData.dateOfBirth)}y` : 'N/A'} · {trendData.gender || 'N/A'}
                               </span>
                             </div>
                             <div className="trend-info-card">
@@ -541,9 +659,9 @@ export default function ClinicianDashboard() {
 
                           <div className="trend-info-grid" style={{ marginTop: 12 }}>
                             <div className="trend-info-card">
-                              <span className="trend-info-label">DOB / Gender</span>
+                              <span className="trend-info-label">Age / Gender</span>
                               <span className="trend-info-value">
-                                {trendData.dateOfBirth ? new Date(trendData.dateOfBirth).toLocaleDateString() : 'N/A'} · {trendData.gender || 'N/A'}
+                                {calculateAge(trendData.dateOfBirth) ? `${calculateAge(trendData.dateOfBirth)}y` : 'N/A'} · {trendData.gender || 'N/A'}
                               </span>
                             </div>
                             <div className="trend-info-card">
@@ -622,7 +740,14 @@ export default function ClinicianDashboard() {
             </div>
             <div className="alerts-list">
               {filteredAlerts.length > 0 ? filteredAlerts.map(a => (
-                <AlertCard key={a.id} alert={a} onAction={handleAlertAction} onCreateTask={handleCreateTask} />
+                <AlertCard
+                  key={a.id}
+                  alert={a}
+                  onAction={handleAlertAction}
+                  onCreateTask={handleCreateTask}
+                  onRespond={openRespondModal}
+                  onSchedule={openScheduleModal}
+                />
               )) : (
                 <div className="empty-state">
                   <Bell size={36} className="empty-state-icon" />
@@ -698,7 +823,165 @@ export default function ClinicianDashboard() {
             </div>
           </div>
         )}
+
+        {/* Follow-Ups Tab */}
+        {activeTab === 'followups' && (
+          <div className="card" style={{ padding: 24 }}>
+            <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <CalendarPlus size={18} style={{ color: 'var(--color-primary)' }} /> Scheduled Follow-Ups
+            </h3>
+            {appointments.length > 0 ? (
+              <div className="task-list">
+                {appointments.map(appt => {
+                  const patientName = appt.patient?.user?.fullName || appt.patient?.user?.fullname || `Patient #${appt.patientId}`;
+                  const when = new Date(appt.scheduledAt);
+                  const isUpcoming = appt.status === 'SCHEDULED' && when > new Date();
+                  const isPastDue = appt.status === 'SCHEDULED' && when <= new Date();
+                  const statusBadgeCls = appt.status === 'COMPLETED' ? 'badge-success'
+                    : appt.status === 'CANCELLED' ? 'badge-secondary'
+                    : appt.status === 'MISSED' ? 'badge-danger'
+                    : isPastDue ? 'badge-warning' : 'badge-info';
+                  return (
+                    <div key={appt.id} className={`task-card ${isPastDue ? 'task-card--overdue' : ''}`}>
+                      <div className="task-card__header">
+                        <div>
+                          <h4>{appt.reason}</h4>
+                          <p>{patientName}</p>
+                        </div>
+                        <div className="task-card__badges">
+                          <span className={`badge ${statusBadgeCls}`}>{appt.status}</span>
+                        </div>
+                      </div>
+                      <div className="task-card__meta">
+                        <span><Clock size={14} /> {when.toLocaleString()}</span>
+                        {isUpcoming && <span style={{ color: 'var(--color-primary)' }}>Upcoming</span>}
+                        {isPastDue && <span style={{ color: 'var(--color-warning, #d97706)' }}>Past due</span>}
+                      </div>
+                      {appt.status === 'SCHEDULED' && (
+                        <div className="task-card__actions">
+                          <button className="btn btn-sm btn-primary" onClick={() => updateAppointmentStatus(appt.id, 'COMPLETED')}>
+                            <CheckCircle2 size={14} /> Mark Completed
+                          </button>
+                          <button className="btn btn-sm btn-secondary" onClick={() => updateAppointmentStatus(appt.id, 'MISSED')}>
+                            Missed
+                          </button>
+                          <button className="btn btn-sm btn-secondary" onClick={() => updateAppointmentStatus(appt.id, 'CANCELLED')}>
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="empty-state">
+                <CalendarPlus size={36} className="empty-state-icon" />
+                <p>No follow-ups scheduled yet</p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                  Use the Schedule Follow-Up button on any alert to create one.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Respond to Symptom Report Modal */}
+      <Modal
+        isOpen={respondModal.open}
+        onClose={() => setRespondModal({ open: false, alert: null })}
+        title="Respond to symptom report"
+        width={520}
+      >
+        <form onSubmit={submitFollowUpResponse} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {respondModal.alert && (
+            <div style={{
+              fontSize: '0.78rem', color: 'var(--color-text-secondary)',
+              padding: 10, background: 'var(--color-bg)', borderRadius: 8
+            }}>
+              Patient: <strong>{respondModal.alert.patient?.user?.fullName || `#${respondModal.alert.patientId}`}</strong>
+              {' · '}Alert: {respondModal.alert.alertType?.replace(/_/g, ' ')}
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Response message</label>
+            <textarea
+              className="form-input"
+              rows="5"
+              autoFocus
+              placeholder='e.g. "Continue medication and monitor for 24 hours. Visit clinic if breathing worsens."'
+              value={respondMessage}
+              onChange={e => setRespondMessage(e.target.value)}
+              required
+            />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
+            <input
+              type="checkbox"
+              checked={respondActionRequired}
+              onChange={e => setRespondActionRequired(e.target.checked)}
+            />
+            Action required by patient
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setRespondModal({ open: false, alert: null })}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={respondSubmitting || !respondMessage.trim()}>
+              {respondSubmitting ? 'Sending...' : <><Send size={14} /> Send Response</>}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Schedule Follow-Up Modal */}
+      <Modal
+        isOpen={scheduleModal.open}
+        onClose={() => setScheduleModal({ open: false, alert: null })}
+        title="Schedule follow-up"
+        width={520}
+      >
+        <form onSubmit={submitSchedule} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {scheduleModal.alert && (
+            <div style={{
+              fontSize: '0.78rem', color: 'var(--color-text-secondary)',
+              padding: 10, background: 'var(--color-bg)', borderRadius: 8
+            }}>
+              Patient: <strong>{scheduleModal.alert.patient?.user?.fullName || `#${scheduleModal.alert.patientId}`}</strong>
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Date & time</label>
+            <input
+              type="datetime-local"
+              className="form-input"
+              value={scheduleAt}
+              onChange={e => setScheduleAt(e.target.value)}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Reason</label>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="e.g. Review of asthma symptoms"
+              value={scheduleReason}
+              onChange={e => setScheduleReason(e.target.value)}
+              required
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setScheduleModal({ open: false, alert: null })}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={scheduleSubmitting || !scheduleAt || !scheduleReason.trim()}>
+              {scheduleSubmitting ? 'Scheduling...' : <><CalendarPlus size={14} /> Schedule</>}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, BellRing, CheckCheck, Clock3, FilePlus2, Info, PauseCircle, Siren } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BellRing, CalendarPlus, CheckCheck, Clock3, FilePlus2, Info, MessageSquare, PauseCircle, Siren } from 'lucide-react';
 import './AlertCard.css';
 
 const priorityConfig = {
@@ -20,7 +20,7 @@ function formatStatus(status) {
   return (status || 'NEW').replace(/_/g, ' ');
 }
 
-export default function AlertCard({ alert, onAction, onCreateTask }) {
+export default function AlertCard({ alert, onAction, onCreateTask, onRespond, onSchedule }) {
   const config = priorityConfig[alert.priority] || priorityConfig.LOW;
   const Icon = config.icon;
   const time = new Date(alert.createdAt).toLocaleString();
@@ -98,6 +98,16 @@ export default function AlertCard({ alert, onAction, onCreateTask }) {
           <button className="btn btn-sm btn-secondary" onClick={() => onCreateTask?.(alert)}>
             <FilePlus2 size={14} /> Create Task
           </button>
+          {onRespond && (
+            <button className="btn btn-sm btn-secondary" onClick={() => onRespond(alert)}>
+              <MessageSquare size={14} /> Respond
+            </button>
+          )}
+          {onSchedule && (
+            <button className="btn btn-sm btn-secondary" onClick={() => onSchedule(alert)}>
+              <CalendarPlus size={14} /> Schedule Follow-Up
+            </button>
+          )}
         </div>
       </div>
     </div>

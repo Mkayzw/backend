@@ -4,12 +4,14 @@
   top: 0;
   bottom: 0;
   width: var(--sidebar-width);
-  background: #FFFFFF;
-  border-right: 1px solid #E2EBF6;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FAFBFD 100%);
+  border-right: 1px solid rgba(226, 235, 246, 0.6);
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.04);
   display: flex;
   flex-direction: column;
   z-index: 100;
   animation: slideInLeft 0.4s var(--ease-out);
+  backdrop-filter: blur(10px);
 }
 
 .sidebar__brand {
@@ -21,15 +23,30 @@
 }
 
 .sidebar__logo {
-  width: 42px;
-  height: 42px;
-  background: var(--color-primary);
-  border-radius: var(--radius-md);
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+}
+
+.sidebar__logo::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.3), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.sidebar__logo:hover::before {
+  opacity: 1;
 }
 
 .sidebar__title {
@@ -65,13 +82,23 @@
   color: #475569;
   font-size: 0.875rem;
   font-weight: 500;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
   position: relative;
+  cursor: pointer;
+}
+
+.sidebar__link svg {
+  transition: transform var(--transition-base);
 }
 
 .sidebar__link:hover {
   color: #0F172A;
   background: #F1F5F9;
+  transform: translateX(2px);
+}
+
+.sidebar__link:hover svg {
+  transform: scale(1.1);
 }
 
 .sidebar__link--active {
@@ -90,6 +117,12 @@
   height: 20px;
   background: #2563EB;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  animation: slideInLeft 0.3s var(--ease-out);
+}
+
+.sidebar__link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .sidebar__footer {
@@ -153,13 +186,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .sidebar__logout:hover {
   background: rgba(220, 38, 38, 0.08);
   color: var(--color-danger);
+  transform: rotate(15deg) scale(1.05);
+}
+
+.sidebar__logout:active {
+  transform: rotate(15deg) scale(0.95);
+}
+
+.sidebar__logout:focus-visible {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
 }
 
 .sidebar__badge {

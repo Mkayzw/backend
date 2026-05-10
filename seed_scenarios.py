@@ -26,7 +26,7 @@ Run:
 import asyncio
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict
 
 from app.db import db
@@ -73,7 +73,20 @@ async def _cleanup_defense_data() -> None:
     patients = await db.patient.find_many(where={"userId": {"in": user_ids}})
     patient_ids = [p.id for p in patients]
 
+    # New: clear notifications, follow-up responses & appointments before parents.
+    try:
+        await db.notification.delete_many(where={"userId": {"in": user_ids}})
+    except Exception:
+        pass
     if patient_ids:
+        try:
+            await db.followupresponse.delete_many(where={"patientId": {"in": patient_ids}})
+        except Exception:
+            pass
+        try:
+            await db.followupappointment.delete_many(where={"patientId": {"in": patient_ids}})
+        except Exception:
+            pass
         await db.task.delete_many(where={"patientId": {"in": patient_ids}})
         await db.alert.delete_many(where={"patientId": {"in": patient_ids}})
         await db.symptomreport.delete_many(where={"patientId": {"in": patient_ids}})
@@ -422,6 +435,213 @@ async def _run_scenario_reports(patient_id: int, reports: List[ReportInput]) -> 
         await _create_report_with_intelligence(patient_id, r)
 
 
+async def _create_followup_response(
+    *,
+    symptom_report_id: int,
+    clinician_id: int,
+    patient_id: int,
+    message: str,
+    action_required: bool,
+    created_at: datetime,
+) -> dict:
+    return await db.followupresponse.create(
+        data={
+            "symptomReportId": symptom_report_id,
+            "clinicianId": clinician_id,
+            "patientId": patient_id,
+            "message": message,
+            "actionRequired": action_required,
+            "createdAt": created_at,
+        }
+    )
+
+
+async def _create_followup_appointment(
+    *,
+    patient_id: int,
+    clinician_id: int,
+    scheduled_at: datetime,
+    reason: str,
+    status: str = "SCHEDULED",
+    created_at: Optional[datetime] = None,
+) -> dict:
+    now = datetime.now(timezone.utc)
+    return await db.followupappointment.create(
+        data={
+            "patientId": patient_id,
+            "clinicianId": clinician_id,
+            "scheduledAt": scheduled_at,
+            "reason": reason,
+            "status": status,
+            "createdAt": created_at or (scheduled_at - timedelta(days=2)),
+            "updatedAt": now,
+        }
+    )
+
+
+async def _create_notification(
+    *,
+    user_id: int,
+    title: str,
+    message: str,
+    notif_type: str,
+    is_read: bool = False,
+    link: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+) -> dict:
+    return await db.notification.create(
+        data={
+            "userId": user_id,
+            "title": title,
+            "message": message,
+            "type": notif_type,
+            "isRead": is_read,
+            "link": link,
+            "createdAt": created_at or datetime.now(timezone.utc),
+        }
+    )
+
+
+async def _seed_followup_workflow_artifacts(
+    patients: Dict[str, dict],
+    clinicians: Dict[str, dict],
+) -> Dict[str, int]:
+    """Create deterministic clinician follow-up responses, scheduled appointments,
+    and patient-facing notifications so the new UI flows have rich demo data."""
+
+    clinician_ids = {key: value["clinician"].id for key, value in clinicians.items()}
+    counts = {"responses": 0, "appointments": 0, "notifications": 0}
+
+    # ── 1. Clinician responses: reply to the most recent HIGH-risk reports ──
+    response_map = [
+        ("emergency", "cardio", True,  "High-risk presentation. Please proceed to the emergency department immediately."),
+        ("tendai",    "pulmo",  True,  "Use rescue inhaler now and book an in-person review within 24 hours."),
+        ("farai",     "cardio", True,  "Blood-pressure trend is concerning — please double-check readings twice daily."),
+        ("nyasha",    "cardio", False, "Glucose values look acceptable; continue current insulin regimen and dietary plan."),
+        ("chipo",     "general", False, "Fever appears to be resolving — continue prescribed antimalarials and rest."),
+        ("improving", "general", False, "Recovery is on track. Keep wound clean and watch for redness or new fever."),
+        ("stable",    "cardio", False, "Readings remain within target range. Continue current medications."),
+    ]
+
+    for patient_key, clinician_key, action_required, message in response_map:
+        patient_rec = patients.get(patient_key)
+        if not patient_rec:
+            continue
+        latest_report = await db.symptomreport.find_first(
+            where={"patientId": patient_rec["patient"].id},
+            order={"createdAt": "desc"},
+        )
+        if not latest_report:
+            continue
+
+        report_created = latest_report.createdAt
+        if report_created.tzinfo is None:
+            report_created = report_created.replace(tzinfo=timezone.utc)
+        responded_at = min(
+            report_created + timedelta(hours=4, minutes=30),
+            datetime.now(timezone.utc),
+        )
+
+        await _create_followup_response(
+            symptom_report_id=latest_report.id,
+            clinician_id=clinician_ids[clinician_key],
+            patient_id=patient_rec["patient"].id,
+            message=message,
+            action_required=action_required,
+            created_at=responded_at,
+        )
+        counts["responses"] += 1
+
+        await _create_notification(
+            user_id=patient_rec["user"].id,
+            title="Clinician response received",
+            message=(
+                "Your clinician has reviewed your latest report"
+                + (" — action required." if action_required else ".")
+            ),
+            notif_type="FOLLOW_UP_RESPONSE",
+            is_read=False,
+            link="/patient/history",
+            created_at=responded_at,
+        )
+        counts["notifications"] += 1
+
+    # ── 2. Scheduled follow-up appointments (mix of upcoming + completed) ──
+    now_utc = datetime.now(timezone.utc)
+    appointment_map = [
+        # (patient_key, clinician_key, scheduled_offset_days, reason, status)
+        ("emergency", "cardio",  1,  "Urgent cardiology review after critical presentation", "SCHEDULED"),
+        ("tendai",    "pulmo",   2,  "Asthma follow-up: review inhaler technique",            "SCHEDULED"),
+        ("farai",     "cardio",  4,  "Blood-pressure recheck and medication review",          "SCHEDULED"),
+        ("nyasha",    "cardio",  7,  "Glycaemic control quarterly review",                    "SCHEDULED"),
+        ("improving", "general", 5,  "Post-surgery wound check",                              "SCHEDULED"),
+        ("chipo",     "general", -3, "Post-malaria recovery review",                          "COMPLETED"),
+        ("stable",    "cardio",  -10,"Routine quarterly hypertension check-in",               "COMPLETED"),
+        ("s8",        "general", -2, "Frequent-reporting pattern review",                     "MISSED"),
+    ]
+
+    for patient_key, clinician_key, offset_days, reason, status in appointment_map:
+        patient_rec = patients.get(patient_key)
+        if not patient_rec:
+            continue
+        scheduled_at = now_utc + timedelta(days=offset_days, hours=10)
+
+        await _create_followup_appointment(
+            patient_id=patient_rec["patient"].id,
+            clinician_id=clinician_ids[clinician_key],
+            scheduled_at=scheduled_at,
+            reason=reason,
+            status=status,
+            created_at=scheduled_at - timedelta(days=2),
+        )
+        counts["appointments"] += 1
+
+        if status == "SCHEDULED":
+            await _create_notification(
+                user_id=patient_rec["user"].id,
+                title="Follow-up scheduled",
+                message=f"Follow-up scheduled for {scheduled_at.strftime('%b %d, %Y at %H:%M')}: {reason}",
+                notif_type="FOLLOW_UP_SCHEDULED",
+                is_read=False,
+                link="/patient",
+                created_at=scheduled_at - timedelta(days=2),
+            )
+            counts["notifications"] += 1
+
+    # ── 3. Generic patient-facing notifications (medication / system) ──
+    generic_for_patients = [
+        ("Medication reminder",   "Time to take your evening medication.",                        "MEDICATION_CHECK_IN"),
+        ("Daily check-in",        "Don't forget to log today's symptoms and vitals.",             "MEDICATION_CHECK_IN"),
+        ("Privacy reminder",      "Your health data is encrypted and shared only with your team.", "SYSTEM_MESSAGE"),
+    ]
+    for patient_rec in patients.values():
+        for title, message, ntype in generic_for_patients:
+            await _create_notification(
+                user_id=patient_rec["user"].id,
+                title=title,
+                message=message,
+                notif_type=ntype,
+                is_read=False,
+                created_at=now_utc - timedelta(hours=6),
+            )
+            counts["notifications"] += 1
+
+    # ── 4. Clinician + admin system notifications ──
+    for clinician_rec in clinicians.values():
+        await _create_notification(
+            user_id=clinician_rec["user"].id,
+            title="New high-risk alerts pending",
+            message="You have HIGH-priority alerts awaiting triage.",
+            notif_type="HIGH_RISK_ALERT",
+            is_read=False,
+            link="/clinician/alerts",
+            created_at=now_utc - timedelta(hours=2),
+        )
+        counts["notifications"] += 1
+
+    return counts
+
+
 async def _seed_alert_workflow_artifacts(
     patient_ids: List[int],
     clinician_ids: Dict[str, int],
@@ -487,6 +707,21 @@ async def _seed_operational_artifacts(
     patient_ids = [value["patient"].id for value in patients.values()]
 
     await _seed_alert_workflow_artifacts(patient_ids, clinician_ids)
+    followup_counts = await _seed_followup_workflow_artifacts(patients, clinicians)
+
+    # Notify admin of the seeded operational state.
+    await _create_notification(
+        user_id=admin.id,
+        title="Defense scenario data seeded",
+        message=(
+            f"Seeded {followup_counts['responses']} clinician responses, "
+            f"{followup_counts['appointments']} follow-up appointments, "
+            f"{followup_counts['notifications']} notifications."
+        ),
+        notif_type="SYSTEM_MESSAGE",
+        is_read=False,
+        link="/admin",
+    )
 
     await _create_task(
         patient_id=patients["empty"]["patient"].id,
@@ -1079,6 +1314,8 @@ async def main() -> None:
         print("- Trend statuses: STABLE, IMPROVING, WORSENING")
         print("- Clinical workflows: active/inactive assignments, reassignment, dual assignment")
         print("- Operational data: alerts, triage states, tasks, push subscriptions, audit logs, metrics")
+        print("- Follow-up workflow: clinician responses, scheduled appointments, action-required flags")
+        print("- Notifications: HIGH_RISK_ALERT, FOLLOW_UP_RESPONSE, FOLLOW_UP_SCHEDULED, MEDICATION_CHECK_IN, SYSTEM_MESSAGE")
 
     finally:
         await db.disconnect()

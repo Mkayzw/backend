@@ -93,6 +93,7 @@ from app.routes import health, users, patients, clinicians, assignments, symptom
 from app.routes import alerts, metrics, auth
 from app.routes import push, realtime, tasks
 from app.routes import audit
+from app.routes import followup_responses, followup_appointments, notifications
 
 # Core routes
 app.include_router(health.router)
@@ -111,6 +112,11 @@ app.include_router(push.router)
 app.include_router(realtime.router)
 app.include_router(audit.router)
 app.include_router(tasks.router)
+
+# Telemedicine workflow routes
+app.include_router(followup_responses.router)
+app.include_router(followup_appointments.router)
+app.include_router(notifications.router)
 
 
 if __name__ == "__main__":
