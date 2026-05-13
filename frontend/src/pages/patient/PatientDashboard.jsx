@@ -14,6 +14,7 @@ import StatCard from '../../components/StatCard';
 import RiskBadge from '../../components/RiskBadge';
 import Modal from '../../components/Modal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import PatientOnboarding, { isProfileIncomplete } from './PatientOnboarding';
 import {
   Heart, Activity, Shield, Stethoscope, FileHeart, Clock, Thermometer,
   HeartPulse, Pill, Send, Plus, ClipboardList, Calendar, AlertCircle,
@@ -54,6 +55,7 @@ const PATIENT_TABS = [
   { key: 'report', path: '/patient/report' },
   { key: 'clinicians', path: '/patient/clinicians' },
   { key: 'history', path: '/patient/history' },
+  { key: 'followups', path: '/patient/followups' },
   { key: 'profile', path: '/patient/profile' },
 ];
 const PATIENT_PATH_TO_TAB = Object.fromEntries(PATIENT_TABS.map(t => [t.path, t.key]));
@@ -107,6 +109,11 @@ export default function PatientDashboard() {
   const [savingEscalation, setSavingEscalation] = useState(false);
   const [followUpResponses, setFollowUpResponses] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [reportFieldErrors, setReportFieldErrors] = useState({});
+  const [profileFieldErrors, setProfileFieldErrors] = useState({});
+  const [followupFilter, setFollowupFilter] = useState('all');
+  const [updatingApptId, setUpdatingApptId] = useState(null);
 
   const handleTabChange = (tabKey) => {
     const tabPath = tabKey === 'dashboard' ? '/patient' : `/patient/${tabKey}`;
@@ -135,6 +142,11 @@ export default function PatientDashboard() {
 
       const myPatient = patientsData.find(p => p.userId === user.id);
       setPatient(myPatient);
+
+      // Check if onboarding is needed (profile has placeholder data)
+      if (myPatient && isProfileIncomplete(myPatient)) {
+        setShowOnboarding(true);
+      }
 
       if (myPatient) {
         let chronic = [];
@@ -177,18 +189,65 @@ export default function PatientDashboard() {
     }
   }
 
-  const toggleSymptom = (symptom) => {
+  // ── Appointment Actions (patient 2-way comms) ──
+  const handleAppointmentAction = async (appointmentId, status) => {
+    setUpdatingApptId(appointmentId);
+    try {
+      const updated = await followupAppointmentsAPI.update(appointmentId, { status });
+      setAppointments(prev => prev.map(a => a.id === appointmentId ? updated : a));
+      const labels = { CONFIRMED: 'confirmed', DECLINED: 'declined', RESCHEDULE_REQUESTED: 'reschedule requested' };
+      success(`Appointment ${labels[status] || status.toLowerCase()}`);
+    } catch (err) {
+      toastError('Failed to update appointment: ' + (err.message || 'Unknown error'));
+    } finally {
+      setUpdatingApptId(null);
+    }
+  };
+
+  const toggleSymptom = (s) => {
     setReportForm(f => ({
       ...f,
-      symptoms: f.symptoms.includes(symptom)
-        ? f.symptoms.filter(s => s !== symptom)
-        : [...f.symptoms, symptom],
+      symptoms: f.symptoms.includes(s)
+        ? f.symptoms.filter(x => x !== s)
+        : [...f.symptoms, s]
     }));
+  };
+
+  // ── Symptom Report Validation ──
+  const validateReport = () => {
+    const errors = {};
+    if (reportForm.symptoms.length === 0) {
+      errors.symptoms = 'Please select at least one symptom';
+    }
+    if (!reportForm.severity) {
+      errors.severity = 'Severity is required';
+    }
+    if (!reportForm.durationDays || parseInt(reportForm.durationDays) < 1) {
+      errors.durationDays = 'Duration must be at least 1 day';
+    }
+    if (parseInt(reportForm.durationDays) > 365) {
+      errors.durationDays = 'Duration seems too long — please verify';
+    }
+    if (reportForm.temperature) {
+      const temp = parseFloat(reportForm.temperature);
+      if (isNaN(temp) || temp < 30 || temp > 45) {
+        errors.temperature = 'Temperature must be between 30°C and 45°C';
+      }
+    }
+    if (reportForm.heartRate) {
+      const hr = parseInt(reportForm.heartRate);
+      if (isNaN(hr) || hr < 20 || hr > 300) {
+        errors.heartRate = 'Heart rate must be between 20 and 300 bpm';
+      }
+    }
+    setReportFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmitReport = async (e) => {
     e.preventDefault();
-    if (!patient || reportForm.symptoms.length === 0) return;
+    if (!patient) return;
+    if (!validateReport()) return;
     setSubmitting(true);
     try {
       const payload = {
@@ -220,6 +279,33 @@ export default function PatientDashboard() {
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!patient) return;
+    
+    // Validate required fields with per-field errors
+    const fieldErrs = {};
+    if (!profileForm.dateOfBirth) {
+      fieldErrs.dateOfBirth = 'Date of birth is required';
+    } else {
+      const dob = new Date(profileForm.dateOfBirth);
+      const now = new Date();
+      if (dob > now) fieldErrs.dateOfBirth = 'Date of birth cannot be in the future';
+      const ageYears = (now - dob) / (365.25 * 24 * 60 * 60 * 1000);
+      if (ageYears > 130) fieldErrs.dateOfBirth = 'Please enter a valid date of birth';
+    }
+    if (!profileForm.gender) fieldErrs.gender = 'Gender is required';
+    if (!profileForm.emergencyContact.trim()) fieldErrs.emergencyContact = 'Emergency contact is required';
+    if (!profileForm.address.trim()) fieldErrs.address = 'Address is required';
+    if (!profileForm.allergies.trim()) fieldErrs.allergies = 'Allergies information is required (enter "None known" if applicable)';
+    if (!profileForm.baselineStatus) fieldErrs.baselineStatus = 'Baseline status is required';
+    if (profileForm.phone && !/^\+?[\d\s\-()]+$/.test(profileForm.phone)) {
+      fieldErrs.phone = 'Please enter a valid phone number';
+    }
+    
+    setProfileFieldErrors(fieldErrs);
+    if (Object.keys(fieldErrs).length > 0) {
+      toastError('Please fill in all required fields');
+      return;
+    }
+    
     setSavingProfile(true);
     try {
       await Promise.all([
@@ -322,6 +408,19 @@ export default function PatientDashboard() {
     );
   }
 
+  // ── Show onboarding if profile is incomplete ──
+  if (showOnboarding && patient) {
+    return (
+      <PatientOnboarding
+        patient={patient}
+        onComplete={() => {
+          setShowOnboarding(false);
+          loadData();
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <TopBar title="My Health Dashboard" subtitle={`Welcome back, ${user?.fullName || 'Patient'}`} />
@@ -349,6 +448,16 @@ export default function PatientDashboard() {
           </button>
           <button className={`tab ${activeTab === 'history' ? 'active' : ''}`} onClick={() => handleTabChange('history')}>
             <ClipboardList size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> My Reports
+          </button>
+          <button className={`tab ${activeTab === 'followups' ? 'active' : ''}`} onClick={() => handleTabChange('followups')}>
+            <CalendarPlus size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Follow-Ups
+            {appointments.filter(a => a.status === 'SCHEDULED').length > 0 && (
+              <span style={{
+                background: 'var(--color-primary)', color: 'white', fontSize: '0.68rem',
+                fontWeight: 700, borderRadius: 'var(--radius-full)', padding: '1px 7px',
+                marginLeft: 6, lineHeight: 1.6
+              }}>{appointments.filter(a => a.status === 'SCHEDULED').length}</span>
+            )}
           </button>
           <button className={`tab ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => handleTabChange('profile')}>
             <UserCircle size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Profile
@@ -578,16 +687,16 @@ export default function PatientDashboard() {
                     <button
                       key={s} type="button"
                       className={`symptom-chip ${reportForm.symptoms.includes(s) ? 'symptom-chip--active' : ''}`}
-                      onClick={() => toggleSymptom(s)}
+                      onClick={() => { toggleSymptom(s); if (reportFieldErrors.symptoms) setReportFieldErrors(fe => ({ ...fe, symptoms: '' })); }}
                     >
                       {formatSymptom(s)}
                     </button>
                   ))}
                 </div>
-                {reportForm.symptoms.length === 0 && (
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-danger)' }}>
+                {(reportFieldErrors.symptoms || reportForm.symptoms.length === 0) && (
+                  <span className="field-error">
                     <AlertCircle size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                    Select at least one symptom
+                    {reportFieldErrors.symptoms || 'Select at least one symptom'}
                   </span>
                 )}
               </div>
@@ -616,12 +725,14 @@ export default function PatientDashboard() {
               </div>
               <div className="report-form-row">
                 <div className="form-group">
-                  <label className="form-label"><Thermometer size={13} /> Temperature (\u00b0C)</label>
-                  <input type="number" step="0.1" className="form-input" placeholder="e.g. 37.5" value={reportForm.temperature} onChange={e => setReportForm(f => ({ ...f, temperature: e.target.value }))} />
+                  <label className="form-label"><Thermometer size={13} /> Temperature (°C)</label>
+                  <input type="number" step="0.1" className={`form-input ${reportFieldErrors.temperature ? 'input-error' : ''}`} placeholder="e.g. 37.5" value={reportForm.temperature} onChange={e => { setReportForm(f => ({ ...f, temperature: e.target.value })); if (reportFieldErrors.temperature) setReportFieldErrors(fe => ({ ...fe, temperature: '' })); }} />
+                  {reportFieldErrors.temperature && <span className="field-error">{reportFieldErrors.temperature}</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label"><HeartPulse size={13} /> Heart Rate (bpm)</label>
-                  <input type="number" className="form-input" placeholder="e.g. 80" value={reportForm.heartRate} onChange={e => setReportForm(f => ({ ...f, heartRate: e.target.value }))} />
+                  <input type="number" className={`form-input ${reportFieldErrors.heartRate ? 'input-error' : ''}`} placeholder="e.g. 80" value={reportForm.heartRate} onChange={e => { setReportForm(f => ({ ...f, heartRate: e.target.value })); if (reportFieldErrors.heartRate) setReportFieldErrors(fe => ({ ...fe, heartRate: '' })); }} />
+                  {reportFieldErrors.heartRate && <span className="field-error">{reportFieldErrors.heartRate}</span>}
                 </div>
                 <div className="form-group">
                   <label className="form-label"><Pill size={13} /> Medication Adherent</label>
@@ -716,6 +827,274 @@ export default function PatientDashboard() {
           </div>
         )}
 
+        {/* Follow-Ups Tab */}
+        {activeTab === 'followups' && (
+          <div className="followups-tab">
+            {/* Appointments Section */}
+            <div className="card" style={{ padding: 24, marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0 }}>
+                  <CalendarPlus size={18} style={{ color: 'var(--color-blue)' }} /> Scheduled Appointments
+                </h3>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {['all', 'SCHEDULED', 'CONFIRMED', 'COMPLETED', 'DECLINED', 'RESCHEDULE_REQUESTED'].map(f => (
+                    <button
+                      key={f}
+                      className={`btn btn-sm ${(followupFilter || 'all') === f ? 'btn-primary' : 'btn-secondary'}`}
+                      onClick={() => setFollowupFilter(f)}
+                      style={{ fontSize: '0.72rem', padding: '4px 10px' }}
+                    >
+                      {f === 'all' ? 'All' : f === 'RESCHEDULE_REQUESTED' ? 'Reschedule' : f.charAt(0) + f.slice(1).toLowerCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {(() => {
+                const filtered = appointments.filter(a => {
+                  if (!followupFilter || followupFilter === 'all') return true;
+                  return a.status === followupFilter;
+                }).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="empty-state">
+                      <CalendarPlus size={36} className="empty-state-icon" />
+                      <p>{followupFilter && followupFilter !== 'all'
+                        ? `No ${followupFilter.toLowerCase()} appointments`
+                        : 'No appointments scheduled yet'}</p>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                        Your clinician will schedule follow-ups based on your health reports.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="followup-appointments-list">
+                    {filtered.map((appt, idx) => {
+                      const when = new Date(appt.scheduledAt);
+                      const now = new Date();
+                      const isPast = when < now;
+                      const isUpcoming = appt.status === 'SCHEDULED' && !isPast;
+                      const isToday = when.toDateString() === now.toDateString();
+                      const clinicianName = appt.clinician?.fullName
+                        || appt.clinician?.user?.fullName
+                        || `Clinician #${appt.clinicianId}`;
+
+                      const statusConfig = {
+                        SCHEDULED: { badge: 'badge-info', label: 'Pending', icon: Calendar },
+                        CONFIRMED: { badge: 'badge-success', label: 'Confirmed', icon: CheckCircle2 },
+                        COMPLETED: { badge: 'badge-success', label: 'Completed', icon: CheckCircle2 },
+                        CANCELLED: { badge: 'badge-neutral', label: 'Cancelled', icon: AlertCircle },
+                        MISSED: { badge: 'badge-danger', label: 'Missed', icon: AlertTriangle },
+                        DECLINED: { badge: 'badge-danger', label: 'Declined', icon: AlertCircle },
+                        RESCHEDULE_REQUESTED: { badge: 'badge-warning', label: 'Reschedule Requested', icon: Calendar },
+                      };
+                      const sc = statusConfig[appt.status] || statusConfig.SCHEDULED;
+                      const canAct = appt.status === 'SCHEDULED';
+                      const isUpdating = updatingApptId === appt.id;
+                      const StatusIcon = sc.icon;
+
+                      return (
+                        <div
+                          key={appt.id}
+                          className={`followup-appt-card animate-fade-in ${isToday ? 'followup-appt-card--today' : ''} ${isPast && appt.status === 'SCHEDULED' ? 'followup-appt-card--overdue' : ''}`}
+                          style={{ animationDelay: `${idx * 50}ms` }}
+                        >
+                          {/* Date sidebar */}
+                          <div className={`followup-appt-date ${isUpcoming ? 'followup-appt-date--upcoming' : ''}`}>
+                            <span className="followup-appt-month">
+                              {when.toLocaleDateString('en-US', { month: 'short' })}
+                            </span>
+                            <span className="followup-appt-day">{when.getDate()}</span>
+                            <span className="followup-appt-year">{when.getFullYear()}</span>
+                          </div>
+
+                          {/* Content */}
+                          <div className="followup-appt-body">
+                            <div className="followup-appt-header">
+                              <div>
+                                <h4 className="followup-appt-reason">{appt.reason}</h4>
+                                <div className="followup-appt-meta">
+                                  <span>
+                                    <Clock size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                    {when.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                    {isToday && <span className="followup-today-tag">Today</span>}
+                                  </span>
+                                  <span>
+                                    <Stethoscope size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                    {clinicianName}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className={`badge ${sc.badge}`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <StatusIcon size={11} /> {sc.label}
+                              </span>
+                            </div>
+                            {isPast && appt.status === 'SCHEDULED' && (
+                              <div className="followup-overdue-notice">
+                                <AlertTriangle size={13} />
+                                <span>This appointment date has passed — contact your clinician to reschedule.</span>
+                              </div>
+                            )}
+                            {canAct && (
+                              <div className="followup-appt-actions">
+                                <button
+                                  className="btn btn-sm btn-success"
+                                  disabled={isUpdating}
+                                  onClick={() => handleAppointmentAction(appt.id, 'CONFIRMED')}
+                                >
+                                  <CheckCircle2 size={13} /> Accept
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-secondary"
+                                  disabled={isUpdating}
+                                  onClick={() => handleAppointmentAction(appt.id, 'RESCHEDULE_REQUESTED')}
+                                >
+                                  <Calendar size={13} /> Reschedule
+                                </button>
+                                <button
+                                  className="btn btn-sm btn-danger-outline"
+                                  disabled={isUpdating}
+                                  onClick={() => handleAppointmentAction(appt.id, 'DECLINED')}
+                                >
+                                  <AlertCircle size={13} /> Decline
+                                </button>
+                              </div>
+                            )}
+                            {appt.status === 'CONFIRMED' && (
+                              <div className="followup-confirmed-notice">
+                                <CheckCircle2 size={13} />
+                                <span>You have confirmed this appointment.</span>
+                              </div>
+                            )}
+                            {appt.status === 'RESCHEDULE_REQUESTED' && (
+                              <div className="followup-reschedule-notice">
+                                <Calendar size={13} />
+                                <span>You've requested a reschedule — your clinician will update the date.</span>
+                              </div>
+                            )}
+                            {appt.status === 'DECLINED' && (
+                              <div className="followup-declined-notice">
+                                <AlertCircle size={13} />
+                                <span>You declined this appointment. Your clinician will be notified.</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Summary counters */}
+              {appointments.length > 0 && (
+                <div className="followup-summary">
+                  <div className="followup-summary-item">
+                    <span className="followup-summary-count" style={{ color: 'var(--color-info)' }}>
+                      {appointments.filter(a => a.status === 'SCHEDULED' || a.status === 'CONFIRMED').length}
+                    </span>
+                    <span className="followup-summary-label">Active</span>
+                  </div>
+                  <div className="followup-summary-item">
+                    <span className="followup-summary-count" style={{ color: 'var(--color-success)' }}>
+                      {appointments.filter(a => a.status === 'COMPLETED').length}
+                    </span>
+                    <span className="followup-summary-label">Completed</span>
+                  </div>
+                  <div className="followup-summary-item">
+                    <span className="followup-summary-count" style={{ color: 'var(--color-warning)' }}>
+                      {appointments.filter(a => a.status === 'CANCELLED').length}
+                    </span>
+                    <span className="followup-summary-label">Cancelled</span>
+                  </div>
+                  <div className="followup-summary-item">
+                    <span className="followup-summary-count" style={{ color: 'var(--color-danger)' }}>
+                      {appointments.filter(a => a.status === 'MISSED').length}
+                    </span>
+                    <span className="followup-summary-label">Missed</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Clinician Responses Section */}
+            <div className="card" style={{ padding: 24 }}>
+              <h3 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <MessageSquare size={18} style={{ color: 'var(--color-teal)' }} /> Clinician Responses
+                {followUpResponses.filter(r => r.actionRequired).length > 0 && (
+                  <span className="badge badge-danger" style={{ marginLeft: 8, fontSize: '0.7rem' }}>
+                    {followUpResponses.filter(r => r.actionRequired).length} action required
+                  </span>
+                )}
+              </h3>
+
+              {followUpResponses.length > 0 ? (
+                <div className="followup-responses-list">
+                  {followUpResponses.map((r, idx) => {
+                    const clinicianName = r.clinician?.user?.fullName
+                      || r.clinician?.fullName
+                      || `Clinician #${r.clinicianId}`;
+                    const when = new Date(r.createdAt);
+
+                    return (
+                      <div
+                        key={r.id}
+                        className={`followup-response-card animate-fade-in ${r.actionRequired ? 'followup-response-card--action' : ''}`}
+                        style={{ animationDelay: `${idx * 40}ms` }}
+                      >
+                        <div className="followup-response-header">
+                          <div className="followup-response-clinician">
+                            <div className="followup-response-avatar">
+                              {clinicianName[0]?.toUpperCase() || '?'}
+                            </div>
+                            <div>
+                              <strong style={{ fontSize: '0.88rem' }}>{clinicianName}</strong>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                {r.clinician?.specialization?.replace(/_/g, ' ')}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {r.actionRequired && (
+                              <span className="badge badge-danger" style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                <AlertTriangle size={11} /> Action Required
+                              </span>
+                            )}
+                            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                              {when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{', '}
+                              {when.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="followup-response-message">
+                          {r.message}
+                        </div>
+                        <div className="followup-response-footer">
+                          <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+                            <FileHeart size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                            Re: Symptom Report #{r.symptomReportId}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <MessageSquare size={36} className="empty-state-icon" />
+                  <p>No clinician responses yet</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                    Responses from your clinicians will appear here after they review your symptom reports.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Profile Tab */}
         {activeTab === 'profile' && (
           <div className="card" style={{ padding: 24 }}>
@@ -726,52 +1105,59 @@ export default function PatientDashboard() {
               
               <div className="report-form-row">
                 <div className="form-group">
-                  <label className="form-label">Date of Birth</label>
-                  <input type="date" className="form-input" value={profileForm.dateOfBirth} onChange={e => setProfileForm(f => ({ ...f, dateOfBirth: e.target.value }))} required />
-                  {profileForm.dateOfBirth && (
+                  <label className="form-label">Date of Birth *</label>
+                  <input type="date" className={`form-input ${profileFieldErrors.dateOfBirth ? 'input-error' : ''}`} value={profileForm.dateOfBirth} onChange={e => { setProfileForm(f => ({ ...f, dateOfBirth: e.target.value })); if (profileFieldErrors.dateOfBirth) setProfileFieldErrors(fe => ({ ...fe, dateOfBirth: '' })); }} required />
+                  {profileFieldErrors.dateOfBirth && <span className="field-error">{profileFieldErrors.dateOfBirth}</span>}
+                  {!profileFieldErrors.dateOfBirth && profileForm.dateOfBirth && (
                     <small style={{ color: 'var(--color-text-secondary)', marginTop: 4 }}>Age: {calculateAge(profileForm.dateOfBirth)} years</small>
                   )}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Gender</label>
-                  <select className="form-select" value={profileForm.gender} onChange={e => setProfileForm(f => ({ ...f, gender: e.target.value }))} required>
+                  <label className="form-label">Gender *</label>
+                  <select className={`form-select ${profileFieldErrors.gender ? 'input-error' : ''}`} value={profileForm.gender} onChange={e => { setProfileForm(f => ({ ...f, gender: e.target.value })); if (profileFieldErrors.gender) setProfileFieldErrors(fe => ({ ...fe, gender: '' })); }} required>
                     <option value="">Select...</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
                   </select>
+                  {profileFieldErrors.gender && <span className="field-error">{profileFieldErrors.gender}</span>}
                 </div>
               </div>
 
               <div className="report-form-row">
                 <div className="form-group">
                   <label className="form-label">Phone Number</label>
-                  <input type="tel" className="form-input" placeholder="e.g. +263-77-000-0000" value={profileForm.phone} onChange={e => setProfileForm(f => ({ ...f, phone: e.target.value }))} />
+                  <input type="tel" className={`form-input ${profileFieldErrors.phone ? 'input-error' : ''}`} placeholder="e.g. +263-77-000-0000" value={profileForm.phone} onChange={e => { setProfileForm(f => ({ ...f, phone: e.target.value })); if (profileFieldErrors.phone) setProfileFieldErrors(fe => ({ ...fe, phone: '' })); }} />
+                  {profileFieldErrors.phone && <span className="field-error">{profileFieldErrors.phone}</span>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Emergency Contact</label>
-                  <input type="text" className="form-input" value={profileForm.emergencyContact} onChange={e => setProfileForm(f => ({ ...f, emergencyContact: e.target.value }))} required />
+                  <label className="form-label">Emergency Contact *</label>
+                  <input type="text" className={`form-input ${profileFieldErrors.emergencyContact ? 'input-error' : ''}`} value={profileForm.emergencyContact} onChange={e => { setProfileForm(f => ({ ...f, emergencyContact: e.target.value })); if (profileFieldErrors.emergencyContact) setProfileFieldErrors(fe => ({ ...fe, emergencyContact: '' })); }} required />
+                  {profileFieldErrors.emergencyContact && <span className="field-error">{profileFieldErrors.emergencyContact}</span>}
                 </div>
               </div>
 
               <div className="report-form-row">
                 <div className="form-group">
-                  <label className="form-label">Address</label>
-                  <input type="text" className="form-input" value={profileForm.address} onChange={e => setProfileForm(f => ({ ...f, address: e.target.value }))} />
+                  <label className="form-label">Address *</label>
+                  <input type="text" className={`form-input ${profileFieldErrors.address ? 'input-error' : ''}`} value={profileForm.address} onChange={e => { setProfileForm(f => ({ ...f, address: e.target.value })); if (profileFieldErrors.address) setProfileFieldErrors(fe => ({ ...fe, address: '' })); }} required />
+                  {profileFieldErrors.address && <span className="field-error">{profileFieldErrors.address}</span>}
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Baseline Status</label>
-                <select className="form-select" value={profileForm.baselineStatus} onChange={e => setProfileForm(f => ({ ...f, baselineStatus: e.target.value }))}>
+                <label className="form-label">Baseline Status *</label>
+                <select className={`form-select ${profileFieldErrors.baselineStatus ? 'input-error' : ''}`} value={profileForm.baselineStatus} onChange={e => { setProfileForm(f => ({ ...f, baselineStatus: e.target.value })); if (profileFieldErrors.baselineStatus) setProfileFieldErrors(fe => ({ ...fe, baselineStatus: '' })); }} required>
+                  <option value="">Select...</option>
                   <option value="stable">Stable</option>
                   <option value="fragile">Fragile</option>
                   <option value="unknown">Unknown</option>
                 </select>
+                {profileFieldErrors.baselineStatus && <span className="field-error">{profileFieldErrors.baselineStatus}</span>}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Chronic Conditions</label>
+                <label className="form-label">Chronic Conditions (optional)</label>
                 <div className="symptom-grid">
                   {COMMON_CONDITIONS.map(c => (
                     <button
@@ -786,8 +1172,9 @@ export default function PatientDashboard() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Allergies (comma-separated)</label>
-                <input type="text" className="form-input" placeholder="e.g. penicillin, peanuts" value={profileForm.allergies} onChange={e => setProfileForm(f => ({ ...f, allergies: e.target.value }))} />
+                <label className="form-label">Allergies *</label>
+                <input type="text" className={`form-input ${profileFieldErrors.allergies ? 'input-error' : ''}`} placeholder="e.g. penicillin, peanuts, or 'None known'" value={profileForm.allergies} onChange={e => { setProfileForm(f => ({ ...f, allergies: e.target.value })); if (profileFieldErrors.allergies) setProfileFieldErrors(fe => ({ ...fe, allergies: '' })); }} required />
+                {profileFieldErrors.allergies && <span className="field-error">{profileFieldErrors.allergies}</span>}
               </div>
 
               <button type="submit" className="btn btn-primary" disabled={savingProfile} style={{ width: '100%', marginTop: 8 }}>

@@ -19,7 +19,8 @@ APPOINTMENT_INCLUDE = {
     "patient": {"include": {"user": True}},
 }
 
-VALID_STATUSES = {"SCHEDULED", "COMPLETED", "CANCELLED", "MISSED"}
+VALID_STATUSES = {"SCHEDULED", "COMPLETED", "CANCELLED", "MISSED", "CONFIRMED", "DECLINED", "RESCHEDULE_REQUESTED"}
+PATIENT_ALLOWED_STATUSES = {"CONFIRMED", "DECLINED", "RESCHEDULE_REQUESTED"}
 
 
 async def _get_clinician_id_for_user(user_id: int) -> Optional[int]:
@@ -106,6 +107,23 @@ async def updateAppointment(
     has_access = await checkDataAccess(current_user, "patient", appt.patientId)
     if not has_access:
         raise HTTPException(status_code=403, detail="Access denied")
+
+    # Patients may only update the status of their own appointments
+    if current_user["role"] == "PATIENT":
+        patient_record = await db.patient.find_first(
+            where={"userId": int(current_user["id"])}
+        )
+        if not patient_record or patient_record.id != appt.patientId:
+            raise HTTPException(status_code=403, detail="You can only update your own appointments")
+        if scheduledAt is not None or reason is not None:
+            raise HTTPException(status_code=403, detail="Patients may only update appointment status")
+        if status_value is not None:
+            normalized = status_value.upper()
+            if normalized not in PATIENT_ALLOWED_STATUSES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Patients may set status to: {sorted(PATIENT_ALLOWED_STATUSES)}",
+                )
 
     data: dict = {}
     if scheduledAt is not None:

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -20,7 +20,7 @@ import { startRealtimeStream } from '../../realtime/sse';
 import {
   ShieldAlert, TrendingDown, Bell, FileHeart, Users, Activity,
   ChevronDown, ChevronUp, Clock, Info, ClipboardList, CheckCircle2, TimerReset,
-  CalendarPlus, MessageSquare, Send
+  CalendarPlus, Send, RefreshCw
 } from 'lucide-react';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -38,8 +38,6 @@ const CLINICIAN_TABS = [
 ];
 const CLINICIAN_PATH_TO_TAB = Object.fromEntries(CLINICIAN_TABS.map(t => [t.path, t.key]));
 
-const PIE_COLORS = ['#27AE60', '#2D9CDB', '#9B51E0'];
-
 // Calculate age from dateOfBirth
 function calculateAge(dateOfBirth) {
   if (!dateOfBirth) return null;
@@ -51,6 +49,15 @@ function calculateAge(dateOfBirth) {
     age--;
   }
   return age;
+}
+
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 export default function ClinicianDashboard() {
@@ -82,14 +89,64 @@ export default function ClinicianDashboard() {
   const [scheduleReason, setScheduleReason] = useState('');
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
 
+  // Alert action modal (replaces window.prompt)
+  const [alertActionModal, setAlertActionModal] = useState({ open: false, alert: null, action: '' });
+  const [alertActionNote, setAlertActionNote] = useState('');
+  const [alertActionHours, setAlertActionHours] = useState('4');
+  const [alertActionSubmitting, setAlertActionSubmitting] = useState(false);
+
+  // Create task modal (replaces window.prompt)
+  const [createTaskModal, setCreateTaskModal] = useState({ open: false, alert: null });
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskDueHours, setTaskDueHours] = useState('24');
+  const [createTaskSubmitting, setCreateTaskSubmitting] = useState(false);
+
   const handleTabChange = (tabKey) => {
     const tabPath = tabKey === 'patients' ? '/clinician' : `/clinician/${tabKey}`;
     navigate(tabPath, { replace: true });
   };
 
+  const loadData = useCallback(async ({ showSpinner = true, silent = false } = {}) => {
+    if (showSpinner) setLoading(true);
+    try {
+      const statsData = await dashboardAPI.getStats();
+      setStats(statsData);
+    } catch (err) { if (!silent) toastError('Failed to load stats: ' + (err.message || 'Unknown error')); }
+    try {
+      const patientsData = await dashboardAPI.getPrioritizedPatients();
+      setPatients(patientsData);
+    } catch (err) { if (!silent) toastError('Failed to load patients: ' + (err.message || 'Unknown error')); }
+    try {
+      const alertsData = await alertsAPI.getAll({ limit: 50 });
+      setAlerts(alertsData);
+      const unreadCount = (alertsData || []).filter(a => !a.isRead).length;
+      setUnreadAlerts(unreadCount);
+    } catch (err) { if (!silent) toastError('Failed to load alerts: ' + (err.message || 'Unknown error')); }
+    try {
+      const tasksData = await tasksAPI.getAll();
+      setTasks(tasksData);
+    } catch (err) { if (!silent) toastError('Failed to load tasks: ' + (err.message || 'Unknown error')); }
+    try {
+      const appts = await followupAppointmentsAPI.list();
+      setAppointments(appts);
+    } catch (err) { if (!silent) toastError('Failed to load follow-ups: ' + (err.message || 'Unknown error')); }
+    if (showSpinner) setLoading(false);
+  }, [setUnreadAlerts, toastError]);
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData();
-  }, []);
+
+    const refreshSilently = () => loadData({ showSpinner: false, silent: true });
+    const intervalId = window.setInterval(refreshSilently, 15000);
+    window.addEventListener('focus', refreshSilently);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshSilently);
+    };
+  }, [loadData]);
 
   useEffect(() => {
     const token = localStorage.getItem('rpm_token');
@@ -124,33 +181,6 @@ export default function ClinicianDashboard() {
 
     return () => stream.stop();
   }, [setUnreadAlerts, success]);
-
-  async function loadData() {
-    setLoading(true);
-    try {
-      const statsData = await dashboardAPI.getStats();
-      setStats(statsData);
-    } catch (err) { toastError('Failed to load stats: ' + (err.message || 'Unknown error')); }
-    try {
-      const patientsData = await dashboardAPI.getPrioritizedPatients();
-      setPatients(patientsData);
-    } catch (err) { toastError('Failed to load patients: ' + (err.message || 'Unknown error')); }
-    try {
-      const alertsData = await alertsAPI.getAll({ limit: 50 });
-      setAlerts(alertsData);
-      const unreadCount = (alertsData || []).filter(a => !a.isRead).length;
-      setUnreadAlerts(unreadCount);
-    } catch (err) { toastError('Failed to load alerts: ' + (err.message || 'Unknown error')); }
-    try {
-      const tasksData = await tasksAPI.getAll();
-      setTasks(tasksData);
-    } catch (err) { toastError('Failed to load tasks: ' + (err.message || 'Unknown error')); }
-    try {
-      const appts = await followupAppointmentsAPI.list();
-      setAppointments(appts);
-    } catch (err) { toastError('Failed to load follow-ups: ' + (err.message || 'Unknown error')); }
-    setLoading(false);
-  }
 
   // ── Follow-up response (clinician replies to a symptom report) ──
   const openRespondModal = (alert) => {
@@ -268,29 +298,17 @@ export default function ClinicianDashboard() {
   };
 
   const handleAlertAction = async (alert, action) => {
+    // Actions requiring user input — open the modal
+    if (action === 'ADD_NOTE' || action === 'RESOLVE' || action === 'ESCALATE' || action === 'SNOOZE') {
+      setAlertActionModal({ open: true, alert, action });
+      setAlertActionNote(alert.resolutionNote || '');
+      setAlertActionHours('4');
+      return;
+    }
+
+    // Direct actions (ACKNOWLEDGE, ASSIGN, etc.)
     try {
       const payload = { action };
-
-      if (action === 'ADD_NOTE' || action === 'RESOLVE' || action === 'ESCALATE') {
-        const note = window.prompt(
-          action === 'RESOLVE' ? 'Enter resolution note' : 'Enter clinician note',
-          alert.resolutionNote || ''
-        );
-        if (note === null) return;
-        payload.resolutionNote = note;
-      }
-
-      if (action === 'SNOOZE') {
-        const hours = window.prompt('Snooze for how many hours?', '4');
-        if (hours === null) return;
-        const hoursNumber = Number(hours);
-        if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) {
-          toastError('Enter a valid number of hours');
-          return;
-        }
-        payload.snoozedUntil = new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString();
-      }
-
       const updatedAlert = await alertsAPI.triage(alert.id, payload);
       replaceAlert(updatedAlert);
       success(`Alert ${action.toLowerCase().replace('_', ' ')} complete`);
@@ -299,23 +317,56 @@ export default function ClinicianDashboard() {
     }
   };
 
-  const handleCreateTask = async (alert) => {
-    const title = window.prompt('Task title', `Follow up on ${alert.alertType?.replace(/_/g, ' ').toLowerCase()}`);
-    if (title === null || !title.trim()) return;
-
-    const description = window.prompt('Optional task description', alert.resolutionNote || '') || '';
-    const hours = window.prompt('Due in how many hours?', '24');
-    if (hours === null) return;
-    const hoursNumber = Number(hours);
-    const dueAt = Number.isFinite(hoursNumber) && hoursNumber > 0
-      ? new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString()
-      : null;
-
+  const submitAlertAction = async (e) => {
+    e.preventDefault();
+    if (!alertActionModal.alert) return;
+    const { alert, action } = alertActionModal;
+    setAlertActionSubmitting(true);
     try {
+      const payload = { action };
+      if (action === 'ADD_NOTE' || action === 'RESOLVE' || action === 'ESCALATE') {
+        payload.resolutionNote = alertActionNote;
+      }
+      if (action === 'SNOOZE') {
+        const hoursNumber = Number(alertActionHours);
+        if (!Number.isFinite(hoursNumber) || hoursNumber <= 0) {
+          toastError('Enter a valid number of hours');
+          setAlertActionSubmitting(false);
+          return;
+        }
+        payload.snoozedUntil = new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString();
+      }
+      const updatedAlert = await alertsAPI.triage(alert.id, payload);
+      replaceAlert(updatedAlert);
+      success(`Alert ${action.toLowerCase().replace('_', ' ')} complete`);
+      setAlertActionModal({ open: false, alert: null, action: '' });
+    } catch (err) {
+      toastError('Failed to update alert: ' + (err.message || 'Unknown error'));
+    } finally {
+      setAlertActionSubmitting(false);
+    }
+  };
+
+  const handleCreateTask = async (alert) => {
+    setCreateTaskModal({ open: true, alert });
+    setTaskTitle(`Follow up on ${alert.alertType?.replace(/_/g, ' ').toLowerCase()}`);
+    setTaskDescription(alert.resolutionNote || '');
+    setTaskDueHours('24');
+  };
+
+  const submitCreateTask = async (e) => {
+    e.preventDefault();
+    if (!createTaskModal.alert || !taskTitle.trim()) return;
+    setCreateTaskSubmitting(true);
+    try {
+      const hoursNumber = Number(taskDueHours);
+      const dueAt = Number.isFinite(hoursNumber) && hoursNumber > 0
+        ? new Date(Date.now() + hoursNumber * 60 * 60 * 1000).toISOString()
+        : null;
       const createdTask = await tasksAPI.create({
-        createdFromAlertId: alert.id,
-        title: title.trim(),
-        description: description.trim() || null,
+        createdFromAlertId: createTaskModal.alert.id,
+        title: taskTitle.trim(),
+        description: taskDescription.trim() || null,
         dueAt,
       });
       setTasks((prev) => {
@@ -324,8 +375,11 @@ export default function ClinicianDashboard() {
         return nextTasks;
       });
       success('Follow-up task created');
+      setCreateTaskModal({ open: false, alert: null });
     } catch (err) {
       toastError('Failed to create task: ' + (err.message || 'Unknown error'));
+    } finally {
+      setCreateTaskSubmitting(false);
     }
   };
 
@@ -387,7 +441,10 @@ export default function ClinicianDashboard() {
     <>
       <TopBar title="Clinical Dashboard" subtitle={`Dr. ${user?.fullName || 'Clinician'} — Patient Monitoring`} />
       <div className="page-content">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => loadData({ showSpinner: false })}>
+            <RefreshCw size={14} /> Refresh
+          </button>
           <PushAlertsButton />
         </div>
         {/* Stats */}
@@ -441,57 +498,58 @@ export default function ClinicianDashboard() {
               <div className="th-cell th-action" />
             </div>
 
-            {patients.length > 0 ? patients.map((p, idx) => {
-              const latestReport = p.symptomReports?.[0];
-              const assignment = p.assignments?.[0];
-              const unreadAlerts = p.alerts?.filter(a => !a.isRead).length || 0;
-              let symptoms = [];
-              try { symptoms = JSON.parse(latestReport?.symptoms || '[]'); } catch {}
+            <div className="clinician-table-body">
+              {patients.length > 0 ? patients.map((p, idx) => {
+                const latestReport = p.symptomReports?.[0];
+                const assignment = p.assignments?.[0];
+                const unreadAlerts = p.alerts?.filter(a => !a.isRead).length || 0;
+                const symptoms = parseJsonArray(latestReport?.symptoms);
+                const chronicConditions = parseJsonArray(p.chronicConditions);
 
-              return (
-                <div key={p.id} className="animate-fade-in" style={{ animationDelay: `${idx * 40}ms` }}>
-                  <div className={`patient-row ${expandedPatient === p.id ? 'patient-row--expanded' : ''}`} onClick={() => loadTrend(p.id)}>
-                    <div className="td-cell th-name">
-                      <div className="patient-avatar" style={{
-                        background: p.currentRiskLevel === 'HIGH'
-                          ? 'linear-gradient(135deg, #EB5757, #D63031)'
-                          : p.currentRiskLevel === 'MEDIUM'
-                          ? 'linear-gradient(135deg, #F2994A, #E17055)'
-                          : 'linear-gradient(135deg, var(--color-blue), var(--color-teal))'
-                      }}>
-                        {p.user?.fullName?.[0] || p.user?.email?.[0] || '?'}
+                return (
+                  <div key={p.id} className="animate-fade-in" style={{ animationDelay: `${idx * 40}ms` }}>
+                    <div className={`patient-row ${expandedPatient === p.id ? 'patient-row--expanded' : ''}`} onClick={() => loadTrend(p.id)}>
+                      <div className="td-cell th-name">
+                        <div className="patient-avatar" style={{
+                          background: p.currentRiskLevel === 'HIGH'
+                            ? 'linear-gradient(135deg, #EB5757, #D63031)'
+                            : p.currentRiskLevel === 'MEDIUM'
+                            ? 'linear-gradient(135deg, #F2994A, #E17055)'
+                            : 'linear-gradient(135deg, var(--color-blue), var(--color-teal))'
+                        }}>
+                          {p.user?.fullName?.[0] || p.user?.email?.[0] || '?'}
+                        </div>
+                        <div>
+                          <span className="patient-name">{p.user?.fullName || p.user?.email || `Patient #${p.id}`}</span>
+                          {chronicConditions.length > 0 && (
+                            <span className="patient-conditions">{chronicConditions.join(', ')}</span>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <span className="patient-name">{p.user?.fullName || p.user?.email || `Patient #${p.id}`}</span>
-                        {p.chronicConditions && p.chronicConditions !== '[]' && (
-                          <span className="patient-conditions">{JSON.parse(p.chronicConditions).join(', ')}</span>
-                        )}
+                      <div className="td-cell th-risk"><RiskBadge level={p.currentRiskLevel} /></div>
+                      <div className="td-cell th-trend"><TrendIndicator status={p.currentTrendStatus} /></div>
+                      <div className="td-cell th-context">
+                        <span className="context-tag">{assignment?.careContext?.replace(/_/g, ' ') || 'N/A'}</span>
+                      </div>
+                      <div className="td-cell th-last">
+                        {latestReport ? (
+                          <span className="last-report-time">
+                            <Clock size={13} />
+                            {new Date(latestReport.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        ) : <span className="text-muted">No reports</span>}
+                      </div>
+                      <div className="td-cell th-alerts">
+                        {unreadAlerts > 0 && <span className="badge badge-danger">{unreadAlerts}</span>}
+                      </div>
+                      <div className="td-cell th-action">
+                        {expandedPatient === p.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                       </div>
                     </div>
-                    <div className="td-cell th-risk"><RiskBadge level={p.currentRiskLevel} /></div>
-                    <div className="td-cell th-trend"><TrendIndicator status={p.currentTrendStatus} /></div>
-                    <div className="td-cell th-context">
-                      <span className="context-tag">{assignment?.careContext?.replace(/_/g, ' ') || 'N/A'}</span>
-                    </div>
-                    <div className="td-cell th-last">
-                      {latestReport ? (
-                        <span className="last-report-time">
-                          <Clock size={13} />
-                          {new Date(latestReport.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        </span>
-                      ) : <span className="text-muted">No reports</span>}
-                    </div>
-                    <div className="td-cell th-alerts">
-                      {unreadAlerts > 0 && <span className="badge badge-danger">{unreadAlerts}</span>}
-                    </div>
-                    <div className="td-cell th-action">
-                      {expandedPatient === p.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </div>
-                  </div>
 
-                  {/* Expanded Trend Panel */}
-                  {expandedPatient === p.id && (
-                    <div className="patient-expanded animate-fade-in">
+                    {/* Expanded Trend Panel */}
+                    {expandedPatient === p.id && (
+                      <div className="patient-expanded animate-fade-in">
                       {trendLoading ? (
                         <div className="flex-center" style={{ padding: 40 }}><LoadingSpinner size={32} text="Loading trend data..." /></div>
                       ) : trendData ? (
@@ -585,16 +643,17 @@ export default function ClinicianDashboard() {
                           )}
                         </div>
                       ) : null}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
+                );
+              }) : (
+                <div className="empty-state" style={{ padding: 48 }}>
+                  <Users size={36} className="empty-state-icon" />
+                  <p>No patients assigned to you</p>
                 </div>
-              );
-            }) : (
-              <div className="empty-state" style={{ padding: 48 }}>
-                <Users size={36} className="empty-state-icon" />
-                <p>No patients assigned to you</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -978,6 +1037,146 @@ export default function ClinicianDashboard() {
             </button>
             <button type="submit" className="btn btn-primary" disabled={scheduleSubmitting || !scheduleAt || !scheduleReason.trim()}>
               {scheduleSubmitting ? 'Scheduling...' : <><CalendarPlus size={14} /> Schedule</>}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Alert Action Modal (replaces window.prompt) */}
+      <Modal
+        isOpen={alertActionModal.open}
+        onClose={() => setAlertActionModal({ open: false, alert: null, action: '' })}
+        title={
+          alertActionModal.action === 'RESOLVE' ? 'Resolve Alert' :
+          alertActionModal.action === 'ESCALATE' ? 'Escalate Alert' :
+          alertActionModal.action === 'SNOOZE' ? 'Snooze Alert' :
+          'Add Clinician Note'
+        }
+        width={500}
+      >
+        <form onSubmit={submitAlertAction} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {alertActionModal.alert && (
+            <div style={{
+              fontSize: '0.78rem', color: 'var(--color-text-secondary)',
+              padding: 10, background: 'var(--color-bg)', borderRadius: 8
+            }}>
+              Patient: <strong>{alertActionModal.alert.patient?.user?.fullName || `#${alertActionModal.alert.patientId}`}</strong>
+              {' · '}Alert: {alertActionModal.alert.alertType?.replace(/_/g, ' ')}
+            </div>
+          )}
+          {alertActionModal.action === 'SNOOZE' ? (
+            <div className="form-group">
+              <label className="form-label">Snooze for how many hours?</label>
+              <input
+                type="number"
+                className="form-input"
+                min="1"
+                max="168"
+                value={alertActionHours}
+                onChange={e => setAlertActionHours(e.target.value)}
+                autoFocus
+                required
+              />
+              <small style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
+                Alert will reappear after {alertActionHours || '0'} hours
+              </small>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label className="form-label">
+                {alertActionModal.action === 'RESOLVE' ? 'Resolution note' : 'Clinician note'}
+              </label>
+              <textarea
+                className="form-input"
+                rows="4"
+                autoFocus
+                placeholder={
+                  alertActionModal.action === 'RESOLVE'
+                    ? 'Describe how this alert was resolved...'
+                    : alertActionModal.action === 'ESCALATE'
+                    ? 'Reason for escalation...'
+                    : 'Add your clinical note...'
+                }
+                value={alertActionNote}
+                onChange={e => setAlertActionNote(e.target.value)}
+              />
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setAlertActionModal({ open: false, alert: null, action: '' })}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={alertActionSubmitting}>
+              {alertActionSubmitting ? 'Processing...' : (
+                alertActionModal.action === 'RESOLVE' ? 'Resolve' :
+                alertActionModal.action === 'ESCALATE' ? 'Escalate' :
+                alertActionModal.action === 'SNOOZE' ? 'Snooze' :
+                'Save Note'
+              )}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Create Task Modal (replaces window.prompt) */}
+      <Modal
+        isOpen={createTaskModal.open}
+        onClose={() => setCreateTaskModal({ open: false, alert: null })}
+        title="Create Follow-Up Task"
+        width={540}
+      >
+        <form onSubmit={submitCreateTask} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {createTaskModal.alert && (
+            <div style={{
+              fontSize: '0.78rem', color: 'var(--color-text-secondary)',
+              padding: 10, background: 'var(--color-bg)', borderRadius: 8
+            }}>
+              From alert: <strong>{createTaskModal.alert.alertType?.replace(/_/g, ' ')}</strong>
+              {' · '}Patient: {createTaskModal.alert.patient?.user?.fullName || `#${createTaskModal.alert.patientId}`}
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">Task title *</label>
+            <input
+              type="text"
+              className="form-input"
+              autoFocus
+              placeholder="e.g. Follow up on breathing issues"
+              value={taskTitle}
+              onChange={e => setTaskTitle(e.target.value)}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Description (optional)</label>
+            <textarea
+              className="form-input"
+              rows="3"
+              placeholder="Additional details or context..."
+              value={taskDescription}
+              onChange={e => setTaskDescription(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Due in how many hours?</label>
+            <input
+              type="number"
+              className="form-input"
+              min="1"
+              max="720"
+              value={taskDueHours}
+              onChange={e => setTaskDueHours(e.target.value)}
+            />
+            <small style={{ color: 'var(--color-text-muted)', marginTop: 4 }}>
+              Leave empty or 0 for no deadline
+            </small>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setCreateTaskModal({ open: false, alert: null })}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={createTaskSubmitting || !taskTitle.trim()}>
+              {createTaskSubmitting ? 'Creating...' : <><ClipboardList size={14} /> Create Task</>}
             </button>
           </div>
         </form>

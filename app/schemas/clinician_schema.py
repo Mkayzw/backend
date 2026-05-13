@@ -10,8 +10,8 @@ class CreateClinician(BaseModel):
 
 
 class UpdateClinician(BaseModel):
-    specialization: str | None = None
-    fullName:       str | None = None
+    specialization: str
+    fullName:       str
 
 
 class ClinicianResponse(BaseModel):

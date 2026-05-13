@@ -68,6 +68,8 @@
 }
 
 .login-error {
+  display: flex;
+  align-items: center;
   background: var(--color-danger-bg);
   color: var(--color-danger);
   padding: 10px 14px;
@@ -113,116 +115,7 @@
   cursor: not-allowed;
 }
 
-.login-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 24px 0 16px;
-}
 
-.login-divider::before,
-.login-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--color-border);
-}
-
-.login-divider span {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  font-weight: 500;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.login-quick-access {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.login-quick-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  background: var(--color-surface-alt);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  font-size: 0.82rem;
-  color: var(--color-text);
-  transition: all var(--transition-base);
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-}
-
-.login-quick-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.05), transparent);
-  transition: left 0.5s var(--ease-out);
-}
-
-.login-quick-btn:hover::before {
-  left: 100%;
-}
-
-.login-quick-btn:hover {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-  transform: translateX(4px);
-}
-
-.login-quick-btn:active {
-  transform: translateX(2px);
-}
-
-.login-quick-btn svg {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  transition: transform var(--transition-base);
-}
-
-.login-quick-btn:hover svg {
-  transform: translateX(4px);
-  color: var(--color-primary);
-}
-
-.login-quick-role {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.login-quick-role--admin {
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563EB;
-}
-
-.login-quick-role--clinician {
-  background: rgba(99, 102, 241, 0.10);
-  color: #6366F1;
-}
-
-.login-quick-role--patient {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.login-quick-label {
-  font-weight: 500;
-}
 
 .login-footer-text {
   text-align: center;
@@ -246,6 +139,16 @@
   font-size: 0.78rem;
   color: var(--color-danger);
   font-weight: 500;
+  animation: fadeIn 0.2s var(--ease-out);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--color-warning);
+  font-weight: 500;
+  animation: fadeIn 0.2s var(--ease-out);
 }
 
 .login-input-wrap--error .login-input-icon {

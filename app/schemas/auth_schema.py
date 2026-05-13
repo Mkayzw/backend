@@ -15,7 +15,7 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     id: int
     email: str
-    fullName: Optional[str] = None
+    fullName: str
     role: str
     token: str
 
@@ -30,7 +30,7 @@ class TokenPayload(BaseModel):
 class UserInfoResponse(BaseModel):
     id: int
     email: str
-    fullName: Optional[str] = None
+    fullName: str
     role: str
 
 
@@ -38,9 +38,19 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
     fullName: str
-    phone: Optional[str] = None
+    phone: str
     role: str = "PATIENT"
     specialization: Optional[str] = None  # Required if role=CLINICIAN
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        """Phone must be a valid format."""
+        if not v.strip():
+            raise ValueError("Phone number is required")
+        if not re.search(r"^\+?[\d\s\-()]+$", v):
+            raise ValueError("Phone must contain only digits, spaces, hyphens, parentheses, or start with +")
+        return v
 
     @field_validator("password")
     @classmethod
@@ -67,6 +77,6 @@ class SignupRequest(BaseModel):
 class SignupResponse(BaseModel):
     id: int
     email: str
-    fullName: Optional[str] = None
+    fullName: str
     role: str
     token: str

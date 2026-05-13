@@ -1,19 +1,12 @@
 .topbar {
-  position: fixed;
-  top: 0;
-  left: var(--sidebar-width);
-  right: 0;
-  height: var(--topbar-height);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(226, 235, 246, 0.6);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
+  background: transparent;
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 40px;
-  z-index: 50;
+  gap: 24px;
+  margin: 32px 40px 0;
+  padding: 0 0 20px;
 }
 
 .topbar__left {
@@ -42,22 +35,19 @@
 
 .topbar__role-badge {
   padding: 6px 16px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.10), rgba(59, 130, 246, 0.06));
+  background: rgba(37, 99, 235, 0.08);
   color: #2563EB;
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   border: 1px solid rgba(37, 99, 235, 0.2);
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   transition: all var(--transition-fast);
 }
 
 .topbar__role-badge:hover {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(59, 130, 246, 0.10));
+  background: rgba(37, 99, 235, 0.12);
   border-color: rgba(37, 99, 235, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .topbar__notif {
@@ -80,11 +70,6 @@
 .topbar__notif:hover {
   background: var(--color-bg);
   color: var(--color-text);
-  transform: scale(1.05);
-}
-
-.topbar__notif:hover svg {
-  animation: shake 0.5s var(--ease-out);
 }
 
 .topbar__notif:active {
@@ -130,4 +115,17 @@
 
 .topbar__notif-badge {
   animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    margin: 24px 20px 0;
+  }
+
+  .topbar__right {
+    width: 100%;
+    justify-content: space-between;
+  }
 }

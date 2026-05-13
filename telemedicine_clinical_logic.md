@@ -1,100 +1,101 @@
 # Telemedicine Clinical Logic Deep Dive
 
-This document explains the actual algorithmic flow in the backend codebase, with direct references to the implementation in:
+This document explains the current clinical logic in the backend codebase. It is based on the implementation in:
 
 - `app/services/risk_classification.py`
 - `app/services/trend_analysis.py`
-- `app/services/alert_service.py`
-- `app/controllers/symptom_report_controller.py`
 - `app/services/symptom_report.py`
+- `app/services/alert_service.py`
+- `app/services/clinical_workflow.py`
+- `app/services/task_service.py`
+- `schema.prisma`
 
-The key point for presentation is that the platform uses a deterministic, rule-based scoring pipeline. It does not rely on a black-box model for risk classification.
+The main presentation point is that the platform uses a deterministic, rule-based clinical pipeline. It does not use a black-box machine learning model for risk classification. Every score is built from visible inputs and every alert comes from explicit rules.
 
 ---
 
-## 1) Risk Classification Algorithm
+## 1) Full Clinical Event Flow
 
-### What the algorithm is doing
+When a patient submits a symptom report, the backend does the work in this order:
 
-The risk engine builds a single numeric `risk_score` by adding together a series of explainable components:
+1. Load the patient record.
+2. Read chronic conditions from `Patient.chronicConditions`.
+3. Derive the patient's age from `Patient.dateOfBirth`.
+4. Check for the most recent active assignment.
+5. Use that assignment's `careContext`.
+6. Create the symptom report with temporary `LOW` risk.
+7. Run risk classification.
+8. Run trend analysis.
+9. Update the symptom report with `riskLevel`, `riskScore`, `riskFactors`, and `riskExplanation`.
+10. Update the patient's current risk/trend state.
+11. Generate alerts when risk or trend rules are triggered.
+12. Deliver realtime, push, and internal notifications to the care team and patient.
+
+The active assignment check is important. A patient cannot submit a report unless they have an active clinician assignment:
+
+```python
+active_assignment = await db.assignment.find_first(
+    where={"patientId": patientId, "status": "ACTIVE"},
+    order={"assignedAt": "desc"},
+)
+if not active_assignment:
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Patient must have an active clinician assignment before submitting a symptom report.",
+    )
+```
+
+This means care context is not guessed. It comes from the actual clinician-patient assignment.
+
+---
+
+## 2) Risk Classification Algorithm
+
+### What the algorithm does
+
+The risk engine builds one numeric `risk_score` by adding explainable components:
 
 - severity score
 - symptom weights
+- combination bonus for multiple high-weight symptoms
 - duration score
 - frequency score
 - medication adherence penalty
 - vital-sign score
-- care-context bonus
+- age score
+- care-context baseline and symptom-match bonus
 - chronic-condition relevance bonus
 - recent-report frequency bonus
 
-That total is then mapped into `LOW`, `MEDIUM`, or `HIGH` using fixed thresholds.
+Then the score is mapped into `LOW`, `MEDIUM`, or `HIGH`.
 
-### The exact scoring logic
+### Core scoring components
 
-The core accumulation happens in `computeRiskScore(...)`:
+The main function is `computeRiskScore(...)`. It receives structured clinical fields:
 
 ```python
-sev_score = SEVERITY_SCORES.get(severity, 0.0)
-total += sev_score
-
-sym_score = sum(SYMPTOM_WEIGHTS.get(s, 0.5) for s in symptoms)
-high_weight = [s for s in symptoms if SYMPTOM_WEIGHTS.get(s, 0) >= 2.0]
-if len(high_weight) >= 2:
-    sym_score += 1.0
-total += sym_score
-
-dur_score = _scoreDuration(durationDays)
-total += dur_score
-
-freq_score = FREQUENCY_SCORES.get(frequency, 0.0)
-total += freq_score
-
-med_score = 1.0 if medicationAdherent is False else 0.0
-total += med_score
-
-vital_score, vital_flags = _scoreVitals(temperature, heartRate)
-total += vital_score
-
-if context_key in CARE_CONTEXT_BONUSES:
-    ctx = CARE_CONTEXT_BONUSES[context_key]
-    total += ctx["baseline"]
-    matching = [s for s in symptoms if s in ctx["matching_symptoms"]]
-    if matching:
-        total += ctx["bonus"]
-
-for cond in conditions:
-    relevant = CONDITION_SYMPTOM_RELEVANCE.get(cond.lower(), [])
-    if any(s in relevant for s in symptoms):
-        total += 1.0
-        break
-
-freq_hist_score, report_count = await _analyzeReportFrequency(patientId)
-total += freq_hist_score
+async def computeRiskScore(
+    patientId: int,
+    symptoms: List[str],
+    severity: str,
+    durationDays: int,
+    frequency: str,
+    temperature: Optional[float] = None,
+    heartRate: Optional[int] = None,
+    medicationAdherent: Optional[bool] = None,
+    careContext: Optional[str] = None,
+    chronicConditions: Optional[List[str]] = None,
+    patientAge: Optional[int] = None,
+) -> Tuple[float, dict]:
 ```
 
-### The weights and thresholds
-
-The algorithm is completely rule-based. The values are hard-coded in the module:
+The fixed classification thresholds are:
 
 ```python
-SEVERITY_SCORES = {
-    "MILD":     0.0,
-    "MODERATE": 1.0,
-    "SEVERE":   2.5,
-    "CRITICAL": 4.0,
-}
-
-FREQUENCY_SCORES = {
-    "FIRST_TIME": 0.0,
-    "RECURRING":  0.5,
-    "CHRONIC":    1.5,
-}
-
 RISK_THRESHOLDS = {"HIGH": 5.0, "MEDIUM": 2.5}
 ```
 
-The final classification is:
+The final level is:
 
 ```python
 def classifyRiskLevel(risk_score: float) -> str:
@@ -105,43 +106,79 @@ def classifyRiskLevel(risk_score: float) -> str:
     return "LOW"
 ```
 
-### How a patient moves from Low to Medium or High
+So:
 
-The transition is not a probabilistic model; it is a threshold gate:
+- `LOW`: score below `2.5`
+- `MEDIUM`: score from `2.5` to `4.99`
+- `HIGH`: score `5.0` or above
 
-- `LOW` if `risk_score < 2.5`
-- `MEDIUM` if `2.5 <= risk_score < 5.0`
-- `HIGH` if `risk_score >= 5.0`
+### Severity, frequency, and duration
 
-### The specific rule components that push the score upward
-
-#### 1. Symptom weights
-
-The symptom dictionary assigns direct base weights:
+Severity is scored like this:
 
 ```python
-SYMPTOM_WEIGHTS = {
-    "chest_pain":            3.0,
-    "difficulty_breathing":  3.0,
-    "shortness_of_breath":   3.0,
-    "severe_bleeding":       3.0,
-    "unconscious":           3.0,
-    "stroke_symptoms":       3.0,
-    "high_fever":            2.0,
-    "persistent_vomiting":   2.0,
-    "severe_pain":           2.0,
-    "confusion":             2.0,
-    "fainting":              2.0,
-    "rapid_heartbeat":       2.0,
-    ...
+SEVERITY_SCORES = {
+    "MILD": 0.0,
+    "MODERATE": 1.0,
+    "SEVERE": 2.5,
+    "CRITICAL": 4.0,
 }
 ```
 
-This means one critical symptom such as `chest_pain` already contributes `3.0`, which is enough to place a patient into `MEDIUM` even before other factors are added.
+Frequency is scored like this:
 
-#### 2. Combination bonus
+```python
+FREQUENCY_SCORES = {
+    "FIRST_TIME": 0.0,
+    "RECURRING": 0.5,
+    "CHRONIC": 1.5,
+}
+```
 
-There is an additional escalation rule:
+Duration adds:
+
+```python
+if durationDays >= 14:
+    return 2.0
+elif durationDays >= 7:
+    return 1.0
+return 0.0
+```
+
+### Symptom weights
+
+Symptoms are stored as structured identifiers, not free-text search terms. Examples:
+
+```python
+SYMPTOM_WEIGHTS = {
+    "chest_pain": 3.0,
+    "difficulty_breathing": 3.0,
+    "shortness_of_breath": 3.0,
+    "severe_bleeding": 3.0,
+    "unconscious": 3.0,
+    "stroke_symptoms": 3.0,
+    "seizure": 3.0,
+    "severe_allergic_reaction": 3.0,
+    "suicidal_ideation": 3.0,
+    "severe_dehydration": 3.0,
+    "blue_lips_or_face": 3.0,
+    "high_fever": 2.0,
+    "persistent_vomiting": 2.0,
+    "severe_pain": 2.0,
+    "confusion": 2.0,
+    "fainting": 2.0,
+    "rapid_heartbeat": 2.0,
+    "escalation_request": 2.5,
+}
+```
+
+If a symptom is unknown, the engine still gives it a small fallback score:
+
+```python
+sym_score = sum(SYMPTOM_WEIGHTS.get(s, 0.5) for s in symptoms)
+```
+
+There is also a combination bonus:
 
 ```python
 high_weight = [s for s in symptoms if SYMPTOM_WEIGHTS.get(s, 0) >= 2.0]
@@ -149,26 +186,11 @@ if len(high_weight) >= 2:
     sym_score += 1.0
 ```
 
-So if the report contains at least two high-weight symptoms, the engine adds `+1.0` on top of the symptom sum.
+This means a report with multiple dangerous symptoms escalates faster than a report with only one.
 
-#### 3. Duration
+### Vitals
 
-Duration is bucketed:
-
-```python
-def _scoreDuration(durationDays: int) -> float:
-    if durationDays >= 14:
-        return 2.0
-    elif durationDays >= 7:
-        return 1.0
-    return 0.0
-```
-
-Longer duration increases risk, with the strongest escalation at `14+` days.
-
-#### 4. Vital signs
-
-Vitals are scored independently:
+Vitals add risk when temperature or heart rate is abnormal:
 
 ```python
 if temperature >= 39.5:
@@ -182,60 +204,102 @@ elif heartRate >= 100:
     score += 1.0
 ```
 
-This means abnormal physiology can move the score into `HIGH` even if symptom severity alone is not enough.
+These flags are also placed into the human-readable explanation.
 
-#### 5. Care context
+### Age-aware scoring
 
-The system adds a baseline and a context-specific bonus:
+The current version includes age as a risk modifier. The service derives age from `Patient.dateOfBirth`, then passes it into `classifySymptomReport(...)`.
+
+Age score is handled in `_scoreAge(...)`:
 
 ```python
-CARE_CONTEXT_BONUSES = {
-    "ASTHMA_FOLLOWUP": {
-        "matching_symptoms": ["difficulty_breathing", "shortness_of_breath", "chest_pain", "cough"],
-        "bonus":    1.5,
-        "baseline": 0.0,
-    },
-    ...
+if age < 1:
+    score += 1.5
+elif age < 5:
+    score += 1.0
+elif age >= 75:
+    score += 1.5
+elif age >= 65:
+    score += 1.0
+```
+
+There are also age-and-symptom interaction bonuses:
+
+```python
+elderly_red_flags = {"chest_pain", "confusion", "fainting", "shortness_of_breath", "fall", "slurred_speech"}
+pediatric_red_flags = {"high_fever", "persistent_vomiting", "severe_dehydration", "difficulty_breathing", "seizure", "blue_lips_or_face"}
+
+if elderly and any(s in elderly_red_flags for s in symptoms):
+    score += 0.5
+if pediatric and any(s in pediatric_red_flags for s in symptoms):
+    score += 0.5
+```
+
+This means the same symptom can carry extra concern for an elderly patient or a very young child.
+
+### Care context
+
+Care context comes from `Assignment.careContext`. The schema currently supports:
+
+- `ASTHMA_FOLLOWUP`
+- `POST_SURGERY_RECOVERY`
+- `CHRONIC_DISEASE_MONITORING`
+- `INFECTION_FOLLOWUP`
+- `CARDIAC_FOLLOWUP`
+- `DIABETES_MANAGEMENT`
+- `HYPERTENSION_MONITORING`
+- `MATERNAL_CARE`
+- `MENTAL_HEALTH_FOLLOWUP`
+- `PEDIATRIC_FOLLOWUP`
+- `ONCOLOGY_FOLLOWUP`
+- `RENAL_FOLLOWUP`
+- `GENERAL_REVIEW`
+
+Each context can add a baseline score and a symptom-match bonus. Example:
+
+```python
+"MATERNAL_CARE": {
+    "matching_symptoms": ["severe_bleeding", "severe_headache", "swelling", "abdominal_pain", "high_blood_pressure", "vision_loss"],
+    "bonus": 2.0,
+    "baseline": 0.5,
 }
 ```
 
-If the report symptoms match the active care context, the code adds the bonus:
+The scoring rule is:
 
 ```python
+total += ctx["baseline"]
 matching = [s for s in symptoms if s in ctx["matching_symptoms"]]
 if matching:
     total += ctx["bonus"]
 ```
 
-This is a contextual escalation rule, not a generic symptom-only score.
+This is why the system is context-aware. Chest pain in a cardiac follow-up, high fever in pediatric follow-up, or severe bleeding in maternal care can be escalated more strongly than the same symptom in a general review.
 
-#### 6. Chronic-condition relevance
+### Chronic-condition relevance
 
-The chronic-condition mapping also contributes a flat bonus:
+The patient can have chronic conditions stored as JSON in `Patient.chronicConditions`. The risk engine checks whether the symptoms match those conditions:
 
 ```python
 CONDITION_SYMPTOM_RELEVANCE = {
-    "asthma": ["difficulty_breathing", "shortness_of_breath", "cough", "chest_pain"],
-    "diabetes": ["fatigue", "confusion", "nausea", "dizziness"],
-    ...
+    "asthma": ["difficulty_breathing", "shortness_of_breath", "cough", "chest_pain", "blue_lips_or_face"],
+    "diabetes": ["fatigue", "confusion", "nausea", "dizziness", "low_blood_sugar", "frequent_urination", "vision_loss", "numbness"],
+    "hypertension": ["chest_pain", "headache", "severe_headache", "rapid_heartbeat", "dizziness", "high_blood_pressure", "vision_loss"],
 }
 ```
 
-If any symptom matches the patient’s chronic-condition relevance list, the engine adds:
+If at least one condition matches the report symptoms, the engine adds one bonus:
 
 ```python
 total += 1.0
+break
 ```
 
-#### 7. Recent report frequency
+### Recent report frequency
 
-The engine also checks report density in the last 7 days:
+The engine checks how many reports the patient made in the last 7 days:
 
 ```python
-reports = await db.symptomreport.find_many(
-    where={"patientId": patientId, "createdAt": {"gte": window_start}}
-)
-count = len(reports)
 if count >= 5:
     return 2.0, count
 elif count >= 3:
@@ -243,57 +307,52 @@ elif count >= 3:
 return 0.0, count
 ```
 
-This means repeated reporting itself increases risk, which is useful for detecting unstable patients.
+This means repeated reporting is itself treated as a warning sign.
 
-### Presentation-ready summary
+### Risk explanation
 
-The risk engine is a deterministic additive model:
+The score is not stored alone. The service also builds a readable explanation:
 
-`risk_score = severity + symptoms + duration + frequency + adherence + vitals + context + chronic relevance + recent-report frequency`
+```python
+parts.append(f"Severity: {severity.capitalize()}")
+parts.append("Symptoms: " + ", ".join(clean))
+parts.append(f"Duration: {durationDays} days")
+parts.append(f"Pattern: {label}")
+parts.append(f"Context: {label}")
+parts.append("Chronic: " + ", ".join(chronicConditions[:2]))
+parts.append("Non-adherent to medication")
+parts.extend(ageFlags)
+parts.extend(vitalFlags)
+parts.append(f"-> {riskLevel} RISK")
+```
 
-Then the code applies:
-
-- `HIGH` at `>= 5.0`
-- `MEDIUM` at `>= 2.5`
-- `LOW` otherwise
+That explanation is saved on `SymptomReport.riskExplanation` and is reused inside alert messages.
 
 ---
 
-## 2) Trend Analysis Algorithm
+## 3) Trend Analysis Algorithm
 
-### What “memory” means here
+Trend analysis answers a different question from risk classification:
 
-The trend engine looks backward through the patient’s prior symptom reports and compares the current score against recent history. It is effectively a short-term temporal model.
+- risk classification asks, "How serious is this report right now?"
+- trend analysis asks, "Is the patient getting better, stable, or worse over time?"
 
-### How it looks backward in time
+The trend engine uses the granular `riskScore` values from recent symptom reports.
 
-The historical fetch is:
+### Historical lookup
+
+The engine fetches recent reports in descending order:
 
 ```python
 historical = await getHistoricalReports(patientId, limit=6)
-```
-
-and the helper queries the database in descending time order:
-
-```python
-return await db.symptomreport.find_many(
-    where={"patientId": patientId},
-    order={"createdAt": "desc"},
-    take=limit,
-)
-```
-
-Then the code explicitly excludes the most recent record from the baseline:
-
-```python
 past_reports = historical[1:] if len(historical) > 0 else []
 ```
 
-That means the algorithm is not comparing the report against itself.
+The newest report is excluded from the baseline so the algorithm does not compare the report against itself.
 
-### Minimum history requirement
+### Minimum history
 
-The trend engine refuses to make a directional call unless there are at least 2 past reports:
+The engine requires at least two past reports:
 
 ```python
 if len(past_reports) < 2:
@@ -303,11 +362,11 @@ if len(past_reports) < 2:
     }
 ```
 
-So the system needs 3 total reports before it will classify the trajectory as improving or worsening.
+So it needs three total reports: the current report plus two previous reports.
 
-### How the delta is calculated
+### Delta calculation
 
-The baseline is an average of up to the 3 most recent past scores:
+The baseline is the average of up to three recent past scores:
 
 ```python
 historical_scores = [
@@ -319,205 +378,251 @@ avg_historical = sum(historical_scores) / len(historical_scores)
 severity_change = current_score - avg_historical
 ```
 
-This is the core delta logic:
+The meaning is:
 
-- positive `severity_change` means the current report is worse than the recent average
-- negative `severity_change` means the current report is better than the recent average
+- positive delta: current report is worse than the recent average
+- negative delta: current report is better than the recent average
 
-### The exact deterioration rule
+### Current decision order
 
-The standard classification thresholds are:
+The current decision order is important:
+
+1. Clear improvement wins first.
+2. If not improving, a prior high-risk spike can force `WORSENING`.
+3. If not improving, high volatility can force `WORSENING`.
+4. Otherwise the standard delta threshold is used.
+
+The thresholds are:
 
 ```python
 IMPROVING_THRESHOLD = -2.0
 WORSENING_THRESHOLD = 2.0
 ```
 
-The decision order is important:
-
-1. High-risk spike override
-2. Volatility override
-3. Delta-based comparison
-
-### High-risk spike override
-
-If any recent past report is already very severe, the engine forces `WORSENING`:
+The current logic is:
 
 ```python
-if any(score >= 10.0 for score in historical_scores):
+if severity_change <= IMPROVING_THRESHOLD:
+    trend_status = "IMPROVING"
+elif any(score >= 10.0 for score in historical_scores):
     trend_status = "WORSENING"
     trend_details["override"] = "high_risk_spike"
-```
-
-This is a stability override: one prior score at or above `10.0` is treated as evidence of an unstable patient trajectory.
-
-### Volatility override
-
-If recent scores swing too widely, the patient is also marked `WORSENING`:
-
-```python
 elif max(historical_scores) - min(historical_scores) > 5.0:
     trend_status = "WORSENING"
     trend_details["override"] = "volatility"
-```
-
-This means the algorithm treats unstable oscillation as clinically concerning, even if the current delta alone is not extreme.
-
-### Standard delta-based trend logic
-
-If no override applies:
-
-```python
-elif severity_change <= IMPROVING_THRESHOLD:
-    trend_status = "IMPROVING"
 elif severity_change >= WORSENING_THRESHOLD:
     trend_status = "WORSENING"
 else:
     trend_status = "STABLE"
 ```
 
-So the exact deterioration condition is:
-
-- `severity_change >= 2.0`
-
-and improvement is:
-
-- `severity_change <= -2.0`
-
-Everything in between is `STABLE`.
-
-### Presentation-ready summary
-
-The trend engine is a short-horizon comparison model:
-
-- it pulls the latest reports in reverse chronological order
-- it averages up to 3 prior scores
-- it computes `current_score - average_previous_score`
-- it overrides the result if history is already severe or volatile
-
-This makes the trend logic both time-aware and explainable.
+This means a strong recovery is not hidden by an older spike. But if there is no clear improvement, high-risk history and large swings are still treated as clinically concerning.
 
 ---
 
-## 3) Alert Trigger and Event Flow
+## 4) Alert Generation and Delivery
 
-### Important clarification
+Alerts are generated after the risk and trend stages.
 
-The controller does **not** decide whether an alert should be created. It only verifies the patient exists and delegates to the service layer.
-
-The controller branch is:
-
-```python
-async def createSymptomReport(payload: CreateSymptomReport):
-    patient = await patientService.getPatientbyId(payload.patientId)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    return await symptomReportService.createSymptomReport(...)
-```
-
-So the real alert trigger lives in `app/services/symptom_report.py`.
-
-### Full event flow
-
-The report service executes the pipeline in this order:
-
-1. resolve chronic conditions
-2. resolve care context
-3. create the symptom report
-4. run risk classification
-5. run trend analysis
-6. update the stored report
-7. update patient state
-8. generate alerts if thresholds are met
-
-### The exact line where the system says “risk is high enough, create an alert”
-
-In `app/services/symptom_report.py`, the trigger is:
+In `app/services/symptom_report.py`:
 
 ```python
 if risk_level == "HIGH":
     await generateRiskAlert(patientId, report.id, risk_level, risk_explanation)
-```
 
-That is the exact decision point for a high-risk alert.
-
-The worsening-trend trigger is parallel:
-
-```python
 if trend_status == "WORSENING":
     await generateTrendAlert(patientId, report.id, trend_status, risk_explanation)
 ```
 
-### How the alert is generated and saved
+### High-risk alert
 
-`generateRiskAlert(...)` is a guard + persistence wrapper:
+`generateRiskAlert(...)` only creates an alert when the risk level is `HIGH`:
 
 ```python
 if riskLevel != "HIGH":
     return None
+```
 
-base = "Patient classified as HIGH RISK — immediate clinical attention required."
-message = f"{base}\nReasoning: {riskExplanation}" if riskExplanation else base
+It creates:
 
-return await generateAlert(
-    patientId=patientId,
-    symptomReportId=symptomReportId,
-    alertType="HIGH_RISK",
-    priority="HIGH",
-    message=message,
+- `alertType="HIGH_RISK"`
+- `priority="HIGH"`
+- message containing the risk explanation
+
+### Worsening-trend alert
+
+`generateTrendAlert(...)` only creates an alert when the trend is `WORSENING`:
+
+```python
+if trendStatus != "WORSENING":
+    return None
+```
+
+It creates:
+
+- `alertType="WORSENING_TREND"`
+- `priority="MEDIUM"`
+- message containing the latest report explanation
+
+### Alert ownership
+
+Alert recipients are based on active assignments for the patient:
+
+```python
+assignments = await db.assignment.find_many(
+    where={"patientId": patient_id, "status": "ACTIVE"},
+    include={"clinician": True},
 )
 ```
 
-Then `generateAlert(...)` writes the database row:
+The active clinicians' user IDs become the alert owners. If an alert is later assigned to a clinician, that assignee is also included.
 
-```python
-return await db.alert.create(
-    data={
-        "patientId":       patientId,
-        "symptomReportId": symptomReportId,
-        "alertType":       alertType,
-        "priority":        priority,
-        "message":         message,
-        "isRead":          False,
-        "createdAt":       datetime.now(),
-    },
-    include={
-        "patient":       {"include": {"user": True}},
-        "symptomReport": True,
-    },
-)
-```
+### Notification delivery
 
-### What the clinician receives
+When `generateAlert(...)` creates an alert, it now does more than write an `Alert` row:
 
-The alert message embeds the explanation string so the clinician sees the reasoning trail immediately:
+- stores the alert with `status="NEW"`
+- publishes `alert.created` through the realtime broker
+- sends Web Push notifications to the care team
+- creates internal notifications for the care team
+- creates a patient notification telling the patient that their clinician has been notified
 
-```python
-message = f"{base}\nReasoning: {riskExplanation}"
-```
-
-This is important because it means the alert is not just a flag; it is a structured clinical explanation derived from the risk engine.
-
-### Why this is clinically useful
-
-The system separates:
-
-- risk classification: “How severe is this report right now?”
-- trend analysis: “Is the patient worsening over time?”
-- alert persistence: “Should we notify a clinician and store the event?”
-
-That separation makes the logic easier to defend in an academic presentation because each stage has a clear responsibility.
+When an alert is triaged, the service publishes `alert.updated` through the realtime broker.
 
 ---
 
-## Short Presentation Script
+## 5) Alert Triage Workflow
 
-If you need a concise verbal explanation:
+The `Alert` model now supports workflow state:
 
-> The platform uses a deterministic clinical scoring engine. It assigns weights to symptoms, severity, duration, vitals, care context, chronic-condition relevance, and recent report frequency. The total score is classified using fixed thresholds: below 2.5 is Low, 2.5 to 4.99 is Medium, and 5.0 or above is High.
+```prisma
+status                AlertStatus   @default(NEW)
+assignedToClinicianId Int?
+resolutionNote        String?
+resolvedAt            DateTime?
+snoozedUntil          DateTime?
+lastActionAt          DateTime?
+lastActionByUserId    Int?
+```
 
-> For trend analysis, the system looks at the most recent reports in reverse chronological order, excludes the current report from the baseline, averages up to three previous scores, and computes the delta between the current score and that baseline. It also overrides the result if there is a high-risk spike or high volatility in the recent history.
+The status enum is:
 
-> Alerts are generated in the symptom-report service after classification. If `risk_level == "HIGH"`, the code calls `generateRiskAlert(...)`, which persists an `Alert` row with `alertType="HIGH_RISK"`, `priority="HIGH"`, and a message containing the explanation trail.
+```prisma
+enum AlertStatus {
+  NEW
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  ESCALATED
+  SNOOZED
+}
+```
 
+The triage rules live in `apply_triage_action(...)`.
+
+### Supported alert actions
+
+- `ACKNOWLEDGE`: marks the alert as read and assigns it to the acting clinician.
+- `START`: moves the alert to `IN_PROGRESS`.
+- `ADD_NOTE`: stores a resolution or working note.
+- `RESOLVE`: requires a note, sets `RESOLVED`, and stores `resolvedAt`.
+- `SNOOZE`: requires `snoozedUntil` and sets `SNOOZED`.
+- `ESCALATE`: sets `ESCALATED` and can assign the alert to another clinician.
+
+Clinician-only actions require a clinician profile. Access is still checked through `checkDataAccess(...)`, so a clinician cannot triage an alert for a patient they should not access.
+
+---
+
+## 6) Tasks and Follow-ups
+
+Alerts can now be turned into clinician tasks.
+
+The `Task` model stores:
+
+```prisma
+patientId           Int
+assignedClinicianId Int
+createdFromAlertId  Int?
+title               String
+description         String?
+dueAt               DateTime?
+status              TaskStatus   @default(OPEN)
+priority            TaskPriority @default(MEDIUM)
+completedAt         DateTime?
+```
+
+Task status values are:
+
+```prisma
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+```
+
+Task priority values are:
+
+```prisma
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+```
+
+When a task is created from an alert, `build_task_from_alert(...)` copies the patient, alert ID, assignee, and alert priority:
+
+```python
+return {
+    "patientId": alert["patientId"],
+    "assignedClinicianId": assigned_clinician_id,
+    "createdFromAlertId": alert["id"],
+    "title": clean_title,
+    "description": (description or "").strip() or None,
+    "dueAt": due_at,
+    "status": "OPEN",
+    "priority": str(alert.get("priority") or "MEDIUM"),
+}
+```
+
+Clinician dashboards count open and overdue tasks using `OPEN` and `IN_PROGRESS` states. This makes prioritization visible beyond the alert itself: the alert is the signal, and the task is the follow-up work item.
+
+---
+
+## 7) Data Structures That Matter
+
+The main database structures behind the clinical logic are:
+
+- `Patient`: stores date of birth, chronic conditions, current risk, current trend, and last report time.
+- `Assignment`: links a patient to a clinician and stores active care context.
+- `SymptomReport`: stores structured symptom inputs and computed risk outputs.
+- `Alert`: stores high-risk and worsening-trend clinical events.
+- `Task`: stores follow-up work created from alerts or manually by clinicians/admins.
+- `PushSubscription`: allows browser push notifications.
+- `Notification`: stores in-app notifications.
+- `AuditLog`: records system actions for accountability.
+
+The most important enums are:
+
+- `RiskLevel`: `LOW`, `MEDIUM`, `HIGH`
+- `TrendStatus`: `IMPROVING`, `STABLE`, `WORSENING`
+- `Severity`: `MILD`, `MODERATE`, `SEVERE`, `CRITICAL`
+- `Frequency`: `FIRST_TIME`, `RECURRING`, `CHRONIC`
+- `CareContext`: assignment-based clinical context
+- `AlertStatus`: alert workflow state
+- `TaskStatus`: follow-up task state
+- `TaskPriority`: task urgency
+
+---
+
+## 8) Presentation-Ready Summary
+
+The platform uses a deterministic clinical scoring engine. It adds scores for severity, symptoms, duration, frequency, medication adherence, vitals, patient age, care context, chronic-condition relevance, and recent report frequency. The final score is classified using fixed thresholds: below `2.5` is `LOW`, `2.5` to `4.99` is `MEDIUM`, and `5.0` or above is `HIGH`.
+
+Trend analysis looks at recent symptom reports, excludes the current report from the baseline, averages recent past scores, and compares the current score against that average. A drop of `-2.0` or more means `IMPROVING`; an increase of `+2.0` or more means `WORSENING`. If there is no clear improvement, the system also treats high-risk spikes or volatile score swings as `WORSENING`.
+
+Alerts are created after classification. A `HIGH` risk report creates a `HIGH_RISK` alert with `HIGH` priority. A `WORSENING` trend creates a `WORSENING_TREND` alert with `MEDIUM` priority. Alerts are sent to active assigned clinicians through realtime updates, push notifications, and stored notifications, while the patient also receives a notification that their clinician has been informed.
+
+Clinicians can then triage alerts by acknowledging, starting work, adding notes, resolving, snoozing, or escalating. They can also create tasks from alerts, which turns a clinical signal into a visible follow-up action on the dashboard.

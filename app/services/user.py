@@ -67,6 +67,43 @@ async def updateUser(
 
 #deleteUser
 async def deleteUser(userId: int) -> None:
+    user = await db.user.find_unique(where={"id": userId})
+    if not user:
+        return
+
+    await db.alert.update_many(
+        where={"lastActionByUserId": userId},
+        data={"lastActionByUserId": None},
+    )
+    await db.pushsubscription.delete_many(where={"userId": userId})
+    await db.notification.delete_many(where={"userId": userId})
+    await db.auditlog.update_many(
+        where={"actorUserId": userId},
+        data={"actorUserId": None},
+    )
+
+    patient = await db.patient.find_unique(where={"userId": userId})
+    if patient:
+        await db.followupresponse.delete_many(where={"patientId": patient.id})
+        await db.followupappointment.delete_many(where={"patientId": patient.id})
+        await db.task.delete_many(where={"patientId": patient.id})
+        await db.alert.delete_many(where={"patientId": patient.id})
+        await db.symptomreport.delete_many(where={"patientId": patient.id})
+        await db.assignment.delete_many(where={"patientId": patient.id})
+        await db.patient.delete(where={"id": patient.id})
+
+    clinician = await db.clinician.find_unique(where={"userId": userId})
+    if clinician:
+        await db.alert.update_many(
+            where={"assignedToClinicianId": clinician.id},
+            data={"assignedToClinicianId": None},
+        )
+        await db.task.delete_many(where={"assignedClinicianId": clinician.id})
+        await db.followupresponse.delete_many(where={"clinicianId": clinician.id})
+        await db.followupappointment.delete_many(where={"clinicianId": clinician.id})
+        await db.assignment.delete_many(where={"clinicianId": clinician.id})
+        await db.clinician.delete(where={"id": clinician.id})
+
     await db.user.delete(where={"id": userId})
 
 async def authenticateUser(email:str,password:str)->bool:

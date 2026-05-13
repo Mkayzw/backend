@@ -4,7 +4,7 @@ import { useNotifications } from '../context/NotificationContext';
 import {
   LayoutDashboard, FileHeart, Users, UserCog, Stethoscope,
   Link2, Bell, BarChart3, Activity, LogOut, Heart, ClipboardList,
-  UserCheck, Settings
+  UserCheck, Settings, CalendarPlus
 } from 'lucide-react';
 import './Sidebar.css';
 
@@ -14,6 +14,7 @@ const navItems = {
     { to: '/patient/report', icon: FileHeart, label: 'Report Symptoms' },
     { to: '/patient/clinicians', icon: Stethoscope, label: 'My Clinicians' },
     { to: '/patient/history', icon: ClipboardList, label: 'My Reports' },
+    { to: '/patient/followups', icon: CalendarPlus, label: 'Follow-Ups' },
   ],
   CLINICIAN: [
     { to: '/clinician', icon: LayoutDashboard, label: 'Dashboard', end: true },

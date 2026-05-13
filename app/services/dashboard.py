@@ -204,9 +204,7 @@ async def getPrioritizedPatients(clinicianId: Optional[int] = None) -> list:
     trend_order = {"WORSENING": 0, "STABLE": 1, "IMPROVING": 2}
 
     # --- DEMO HACK: Dynamically recalculate trends on every GET request ---
-    # This allows you to tweak the trend algorithm in code and immediately
-    # see the results on the dashboard without needing a background worker
-    # or having to manually submit new symptom reports for everyone.
+
     from app.services.trend_analysis import analyzeTrend
 
     for patient in patients:

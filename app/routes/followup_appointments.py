@@ -46,7 +46,7 @@ async def list_appointments(
 async def update_appointment(
     appointmentId: int,
     payload: UpdateFollowUpAppointmentRequest,
-    current_user: dict = Depends(requireRole(["CLINICIAN", "ADMIN"])),
+    current_user: dict = Depends(requireRole(["CLINICIAN", "ADMIN", "PATIENT"])),
 ):
     return await service.updateAppointment(
         appointmentId=appointmentId,

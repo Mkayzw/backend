@@ -24,7 +24,7 @@ from app.db import db
 # ─────────────────────────────────────────────
 SYMPTOM_WEIGHTS: dict[str, float] = {
     # Critical (weight 3.0) — life-threatening, immediate escalation
-    "chest_pain":               3.0,
+    "chest_pain":               2.0,
     "difficulty_breathing":     3.0,
     "shortness_of_breath":      3.0,
     "severe_bleeding":          3.0,

@@ -165,7 +165,6 @@ ul, ol {
 .page-content {
   flex: 1;
   padding: 32px 40px;
-  margin-top: var(--topbar-height);
   max-width: 1600px;
   width: 100%;
 }

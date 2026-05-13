@@ -4,14 +4,14 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    fullname: str | None = None
-    phone: str | None = None
+    fullname: str
+    phone: str
     role: str = "patient"
 
 
 class UpdateUser(BaseModel):
-    fullname: str | None = None
-    phone: str | None = None
+    fullname: str
+    phone: str
 
 
 class UserResponse(BaseModel):
@@ -19,8 +19,8 @@ class UserResponse(BaseModel):
 
     id: int
     email: str
-    fullname: str | None = Field(default=None, alias="fullName")
-    phone: str | None = None
+    fullname: str = Field(alias="fullName")
+    phone: str
     role: str
 
 class LoginReq(BaseModel):

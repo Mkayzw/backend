@@ -40,6 +40,11 @@ export function startRealtimeStream({ token, onEvent, onError } = {}) {
   let buffer = '';
   let retryMs = 2000;
 
+  const isTransientNetworkError = (error) => (
+    error instanceof TypeError
+    && String(error.message || '').toLowerCase().includes('network')
+  );
+
   async function run() {
     try {
       const res = await fetch(`${BASE_URL}/api/realtime/stream`, {
@@ -54,6 +59,7 @@ export function startRealtimeStream({ token, onEvent, onError } = {}) {
         throw err;
       }
 
+      retryMs = 2000;
       const reader = res.body.getReader();
       while (true) {
         const { value, done } = await reader.read();
@@ -70,7 +76,7 @@ export function startRealtimeStream({ token, onEvent, onError } = {}) {
       }
     } catch (e) {
       if (controller.signal.aborted) return;
-      if (onError) onError(e);
+      if (onError && !isTransientNetworkError(e)) onError(e);
       buffer = '';
       // Simple backoff retry (best-effort).
       setTimeout(() => {
