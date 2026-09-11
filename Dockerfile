@@ -10,7 +10,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
@@ -18,9 +17,11 @@ COPY schema.prisma ./schema.prisma
 RUN prisma generate
 
 COPY main.py ./main.py
+COPY seed_data.py ./seed_data.py
+COPY docker_start.py ./docker_start.py
 COPY app ./app
 COPY migrations ./migrations
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "docker_start.py"]
